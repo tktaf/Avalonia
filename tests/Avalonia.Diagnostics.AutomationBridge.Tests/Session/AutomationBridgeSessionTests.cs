@@ -18,7 +18,7 @@ public sealed class AutomationBridgeSessionTests
     [Fact]
     public void GetRoots_ReturnsEmptyList_WhenNoRootsRegistered()
     {
-        var rootRegistry = new AutomationRootRegistry();
+        var rootRegistry = new AutomationRootRegistry(Array.Empty<AutomationPeer>);
         using var session = new AutomationBridgeSession(rootRegistry);
 
         var roots = session.GetRoots();
@@ -29,9 +29,9 @@ public sealed class AutomationBridgeSessionTests
     [Fact]
     public void GetRoots_ReturnsSummary_ForEachRoot()
     {
-        var rootRegistry = new AutomationRootRegistry();
-        rootRegistry.AddRoot(new StubAutomationPeer { Name = "Window1" });
-        rootRegistry.AddRoot(new StubAutomationPeer { Name = "Window2" });
+        var root1 = new StubAutomationPeer { Name = "Window1" };
+        var root2 = new StubAutomationPeer { Name = "Window2" };
+        var rootRegistry = new AutomationRootRegistry(() => new AutomationPeer[] { root1, root2 });
 
         using var session = new AutomationBridgeSession(rootRegistry);
         var roots = session.GetRoots();
@@ -49,8 +49,7 @@ public sealed class AutomationBridgeSessionTests
         var child = new StubAutomationPeer { Name = "Child" };
         root.AddChild(child);
 
-        var rootRegistry = new AutomationRootRegistry();
-        rootRegistry.AddRoot(root);
+        var rootRegistry = new AutomationRootRegistry(() => new AutomationPeer[] { root });
 
         using var session = new AutomationBridgeSession(rootRegistry);
         var roots = session.GetRoots();
@@ -63,8 +62,8 @@ public sealed class AutomationBridgeSessionTests
     [Fact]
     public void GetRoots_AssignsRootHandles_WithWPrefix()
     {
-        var rootRegistry = new AutomationRootRegistry();
-        rootRegistry.AddRoot(new StubAutomationPeer());
+        var peer = new StubAutomationPeer();
+        var rootRegistry = new AutomationRootRegistry(() => new AutomationPeer[] { peer });
 
         using var session = new AutomationBridgeSession(rootRegistry);
         var roots = session.GetRoots();
@@ -75,8 +74,8 @@ public sealed class AutomationBridgeSessionTests
     [Fact]
     public void GetRoots_RootId_EqualsId_ForRootNodes()
     {
-        var rootRegistry = new AutomationRootRegistry();
-        rootRegistry.AddRoot(new StubAutomationPeer());
+        var peer = new StubAutomationPeer();
+        var rootRegistry = new AutomationRootRegistry(() => new AutomationPeer[] { peer });
 
         using var session = new AutomationBridgeSession(rootRegistry);
         var roots = session.GetRoots();
@@ -92,8 +91,8 @@ public sealed class AutomationBridgeSessionTests
     [Fact]
     public void GetRoots_AssignsSameHandle_OnSubsequentCalls()
     {
-        var rootRegistry = new AutomationRootRegistry();
-        rootRegistry.AddRoot(new StubAutomationPeer());
+        var peer = new StubAutomationPeer();
+        var rootRegistry = new AutomationRootRegistry(() => new AutomationPeer[] { peer });
 
         using var session = new AutomationBridgeSession(rootRegistry);
         var firstCall = session.GetRoots();
@@ -106,8 +105,7 @@ public sealed class AutomationBridgeSessionTests
     public void TryGetPeer_ResolvesHandle_AssignedViaGetRoots()
     {
         var peer = new StubAutomationPeer();
-        var rootRegistry = new AutomationRootRegistry();
-        rootRegistry.AddRoot(peer);
+        var rootRegistry = new AutomationRootRegistry(() => new AutomationPeer[] { peer });
 
         using var session = new AutomationBridgeSession(rootRegistry);
         var roots = session.GetRoots();
@@ -138,8 +136,7 @@ public sealed class AutomationBridgeSessionTests
     public void InvalidatePeer_CleansHandle_SoTryGetPeerFails()
     {
         var peer = new StubAutomationPeer();
-        var rootRegistry = new AutomationRootRegistry();
-        rootRegistry.AddRoot(peer);
+        var rootRegistry = new AutomationRootRegistry(() => new AutomationPeer[] { peer });
 
         using var session = new AutomationBridgeSession(rootRegistry);
         var roots = session.GetRoots();
@@ -170,8 +167,7 @@ public sealed class AutomationBridgeSessionTests
     public void DescribeNode_ReturnsSummary_ForKnownHandle()
     {
         var peer = new StubAutomationPeer { Name = "OK" };
-        var rootRegistry = new AutomationRootRegistry();
-        rootRegistry.AddRoot(peer);
+        var rootRegistry = new AutomationRootRegistry(() => new AutomationPeer[] { peer });
 
         using var session = new AutomationBridgeSession(rootRegistry);
         var roots = session.GetRoots();

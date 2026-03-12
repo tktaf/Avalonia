@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
 using Avalonia.Automation.Peers;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 
 namespace Avalonia.Diagnostics.AutomationBridge.Session;
 
@@ -7,39 +10,64 @@ namespace Avalonia.Diagnostics.AutomationBridge.Session;
 /// Maintains the ordered list of top-level automation roots for a bridge session.
 /// </summary>
 /// <remarks>
-/// <para>
-/// Roots are the peers that represent top-level windows or top-level controls.  They are
-/// registered explicitly by the hosting layer (e.g. <c>AutomationBridgeHostedService</c>
-/// reacting to lifetime events) rather than being discovered automatically.
-/// </para>
-/// <para>
-/// The registry is not thread-safe; callers must synchronise access if roots can be added
-/// or removed from multiple threads.
-/// </para>
+/// Roots are discovered from the current <see cref="Application.ApplicationLifetime"/> on
+/// demand so that sessions enumerate the live top-levels that Avalonia already knows about.
 /// </remarks>
 public sealed class AutomationRootRegistry
 {
-    private readonly List<AutomationPeer> _roots = new();
-
-    /// <summary>The current ordered list of root peers.</summary>
-    public IReadOnlyList<AutomationPeer> Roots => _roots;
+    private readonly Func<IReadOnlyList<AutomationPeer>> _rootProvider;
 
     /// <summary>
-    /// Registers <paramref name="peer"/> as a root.  If the peer is already registered
-    /// this is a no-op; the registration order of previously added peers is preserved.
+    /// Initializes a registry that reads roots from the current application lifetime.
     /// </summary>
-    /// <param name="peer">The root peer to register.</param>
-    public void AddRoot(AutomationPeer peer)
+    public AutomationRootRegistry()
+        : this(GetCurrentRoots)
     {
-        if (!_roots.Contains(peer))
-            _roots.Add(peer);
     }
 
     /// <summary>
-    /// Removes <paramref name="peer"/> from the root list.  If the peer is not registered
-    /// this is a no-op.
+    /// Initializes a registry with an explicit root provider.
     /// </summary>
-    /// <param name="peer">The root peer to remove.</param>
-    public void RemoveRoot(AutomationPeer peer)
-        => _roots.Remove(peer);
+    /// <param name="rootProvider">Provides the current ordered set of root peers.</param>
+    internal AutomationRootRegistry(Func<IReadOnlyList<AutomationPeer>> rootProvider)
+    {
+        _rootProvider = rootProvider ?? throw new ArgumentNullException(nameof(rootProvider));
+    }
+
+    /// <summary>The current ordered list of root peers.</summary>
+    public IReadOnlyList<AutomationPeer> Roots => _rootProvider();
+
+    private static IReadOnlyList<AutomationPeer> GetCurrentRoots()
+    {
+        var lifetime = Application.Current?.ApplicationLifetime;
+
+        if (lifetime is IClassicDesktopStyleApplicationLifetime desktopLifetime)
+        {
+            return GetPeers(desktopLifetime.Windows);
+        }
+
+        if (lifetime is ISingleTopLevelApplicationLifetime { TopLevel: Control topLevel })
+        {
+            return new[] { ControlAutomationPeer.CreatePeerForElement(topLevel) };
+        }
+
+        return Array.Empty<AutomationPeer>();
+    }
+
+    private static IReadOnlyList<AutomationPeer> GetPeers(IReadOnlyList<Window> windows)
+    {
+        if (windows.Count == 0)
+        {
+            return Array.Empty<AutomationPeer>();
+        }
+
+        var roots = new AutomationPeer[windows.Count];
+
+        for (var i = 0; i < windows.Count; i++)
+        {
+            roots[i] = ControlAutomationPeer.CreatePeerForElement(windows[i]);
+        }
+
+        return roots;
+    }
 }

@@ -27,7 +27,7 @@ internal sealed class StubAutomationPeer : AutomationPeer
     public Rect BoundingRectangle { get; set; }
 
     /// <summary>
-    /// Registers a provider that will be returned by <see cref="GetProvider{T}"/>.
+    /// Registers a provider that the peer can later return for the requested provider type.
     /// </summary>
     public void RegisterProvider<T>(T provider) where T : class
         => _providers[typeof(T)] = provider;
