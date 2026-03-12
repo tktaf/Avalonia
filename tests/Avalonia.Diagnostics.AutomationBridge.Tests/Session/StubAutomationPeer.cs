@@ -19,12 +19,27 @@ internal class StubAutomationPeer : AutomationPeer
     // Configurable properties
     public AutomationControlType ControlType { get; set; } = AutomationControlType.Custom;
     public string? AutomationId { get; set; }
+    public string? HelpText { get; set; }
+    public string? ItemType { get; set; }
     public string? Name { get; set; }
+    public string? ItemStatus { get; set; }
     public string ClassName { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public bool KeyboardFocus { get; set; }
     public bool KeyboardFocusable { get; set; }
+    public bool Offscreen { get; set; }
     public Rect BoundingRectangle { get; set; }
+    public Exception? AutomationIdException { get; set; }
+    public Exception? ControlTypeException { get; set; }
+    public Exception? NameException { get; set; }
+    public Exception? ClassNameException { get; set; }
+    public Exception? EnabledException { get; set; }
+    public Exception? KeyboardFocusException { get; set; }
+    public Exception? OffscreenException { get; set; }
+    public Exception? BoundingRectangleException { get; set; }
+    public int BoundingRectangleCallCount { get; private set; }
+    public int HelpTextCallCount { get; private set; }
+    public int ItemTypeCallCount { get; private set; }
     public int SetFocusCallCount { get; private set; }
 
     /// <summary>
@@ -63,19 +78,83 @@ internal class StubAutomationPeer : AutomationPeer
     protected override void BringIntoViewCore() { }
     protected override string? GetAcceleratorKeyCore() => null;
     protected override string? GetAccessKeyCore() => null;
-    protected override AutomationControlType GetAutomationControlTypeCore() => ControlType;
-    protected override string? GetAutomationIdCore() => AutomationId;
-    protected override Rect GetBoundingRectangleCore() => BoundingRectangle;
+    protected override AutomationControlType GetAutomationControlTypeCore()
+    {
+        if (ControlTypeException is not null)
+            throw ControlTypeException;
+
+        return ControlType;
+    }
+    protected override string? GetAutomationIdCore()
+    {
+        if (AutomationIdException is not null)
+            throw AutomationIdException;
+
+        return AutomationId;
+    }
+
+    protected override Rect GetBoundingRectangleCore()
+    {
+        BoundingRectangleCallCount++;
+
+        if (BoundingRectangleException is not null)
+            throw BoundingRectangleException;
+
+        return BoundingRectangle;
+    }
     protected override IReadOnlyList<AutomationPeer> GetOrCreateChildrenCore() => _children;
-    protected override string GetClassNameCore() => ClassName;
+    protected override string GetClassNameCore()
+    {
+        if (ClassNameException is not null)
+            throw ClassNameException;
+
+        return ClassName;
+    }
+    protected override string? GetHelpTextCore()
+    {
+        HelpTextCallCount++;
+        return HelpText;
+    }
+
+    protected override string? GetItemTypeCore()
+    {
+        ItemTypeCallCount++;
+        return ItemType;
+    }
+    protected override string? GetItemStatusCore() => ItemStatus;
     protected override AutomationPeer? GetLabeledByCore() => null;
-    protected override string? GetNameCore() => Name;
+    protected override string? GetNameCore()
+    {
+        if (NameException is not null)
+            throw NameException;
+
+        return Name;
+    }
     protected override AutomationPeer? GetParentCore() => _parent;
-    protected override bool HasKeyboardFocusCore() => KeyboardFocus;
+    protected override bool HasKeyboardFocusCore()
+    {
+        if (KeyboardFocusException is not null)
+            throw KeyboardFocusException;
+
+        return KeyboardFocus;
+    }
     protected override bool IsContentElementCore() => true;
     protected override bool IsControlElementCore() => true;
-    protected override bool IsEnabledCore() => Enabled;
+    protected override bool IsEnabledCore()
+    {
+        if (EnabledException is not null)
+            throw EnabledException;
+
+        return Enabled;
+    }
     protected override bool IsKeyboardFocusableCore() => KeyboardFocusable;
+    protected override bool IsOffscreenCore()
+    {
+        if (OffscreenException is not null)
+            throw OffscreenException;
+
+        return Offscreen;
+    }
     protected override void SetFocusCore() => SetFocusCallCount++;
     protected override bool ShowContextMenuCore() => false;
     // Cross-assembly override: the base declares 'protected internal abstract'.

@@ -9,6 +9,26 @@ public sealed class ErrorSerializationTests
     private static readonly JsonSerializerOptions s_options = ProtocolTestOptions.Default;
 
     [Theory]
+    [InlineData(BridgeAction.Roots, "roots")]
+    [InlineData(BridgeAction.Query, "query")]
+    [InlineData(BridgeAction.Describe, "describe")]
+    [InlineData(BridgeAction.Invoke, "invoke")]
+    [InlineData(BridgeAction.SetValue, "set-value")]
+    [InlineData(BridgeAction.Toggle, "toggle")]
+    [InlineData(BridgeAction.Select, "select")]
+    [InlineData(BridgeAction.Expand, "expand")]
+    [InlineData(BridgeAction.Collapse, "collapse")]
+    [InlineData(BridgeAction.SetFocus, "set-focus")]
+    [InlineData(BridgeAction.ShowContextMenu, "show-context-menu")]
+    [InlineData(BridgeAction.Scroll, "scroll")]
+    [InlineData(BridgeAction.SetScrollPercent, "set-scroll-percent")]
+    [InlineData(BridgeAction.Watch, "watch")]
+    public void BridgeAction_HasExpectedStringValue(string constant, string expected)
+    {
+        Assert.Equal(expected, constant);
+    }
+
+    [Theory]
     [InlineData(BridgeErrorCode.BridgeNotEnabled, "bridge_not_enabled")]
     [InlineData(BridgeErrorCode.RootNotFound, "root_not_found")]
     [InlineData(BridgeErrorCode.NodeNotFound, "node_not_found")]
@@ -95,5 +115,21 @@ public sealed class ErrorSerializationTests
         Assert.NotNull(restored.Error);
         Assert.Equal(BridgeErrorCode.ActionNotSupported, restored.Error.Code);
         Assert.Null(restored.Error.Message);
+    }
+
+    [Fact]
+    public void BridgeResponse_NullPayloadFields_AreOmittedWithoutSerializerSpecificOptions()
+    {
+        var response = BridgeResponse.Success("req-3");
+
+        var json = JsonSerializer.Serialize(response);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.Equal("req-3", root.GetProperty("requestId").GetString());
+        Assert.True(root.GetProperty("ok").GetBoolean());
+        Assert.False(root.TryGetProperty("error", out _));
+        Assert.False(root.TryGetProperty("nodes", out _));
+        Assert.False(root.TryGetProperty("delta", out _));
     }
 }

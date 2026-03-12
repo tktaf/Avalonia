@@ -19,9 +19,10 @@ namespace Avalonia.Diagnostics.AutomationBridge.Hosting;
 /// separate CLI invocations while the service stays running.
 /// </para>
 /// </remarks>
-public sealed class AutomationBridgeHostedService : IDisposable
+public sealed class AutomationBridgeHostedService : IAutomationBridgeHostedService, IDisposable
 {
     private readonly AutomationBridgeOptions _options;
+    private readonly IAutomationBridgeRequestInvoker _requestInvoker;
     private readonly object _sessionGate = new();
     private CancellationTokenSource? _stopTokenSource;
     private TcpListener? _listener;
@@ -35,8 +36,16 @@ public sealed class AutomationBridgeHostedService : IDisposable
     /// <summary>Initializes a new instance with the supplied options.</summary>
     /// <param name="options">Bridge configuration; must not be null.</param>
     public AutomationBridgeHostedService(AutomationBridgeOptions options)
+        : this(options, new UiThreadAutomationBridgeRequestInvoker())
+    {
+    }
+
+    internal AutomationBridgeHostedService(
+        AutomationBridgeOptions options,
+        IAutomationBridgeRequestInvoker requestInvoker)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _requestInvoker = requestInvoker ?? throw new ArgumentNullException(nameof(requestInvoker));
     }
 
     /// <summary>Gets the configured options.</summary>
@@ -167,11 +176,14 @@ public sealed class AutomationBridgeHostedService : IDisposable
 
     private BridgeResponse Dispatch(BridgeRequest request)
     {
-        lock (_sessionGate)
+        return _requestInvoker.Invoke(() =>
         {
-            return AutomationBridgeRequestDispatcher.Dispatch(
-                _session ?? throw new ObjectDisposedException(nameof(AutomationBridgeHostedService)),
-                request);
-        }
+            lock (_sessionGate)
+            {
+                return AutomationBridgeRequestDispatcher.Dispatch(
+                    _session ?? throw new ObjectDisposedException(nameof(AutomationBridgeHostedService)),
+                    request);
+            }
+        });
     }
 }

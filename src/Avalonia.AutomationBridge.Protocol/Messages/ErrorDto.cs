@@ -28,6 +28,12 @@ public static class BridgeErrorCode
 
     /// <summary>The supplied request payload could not be parsed or validated.</summary>
     public const string InvalidRequest = "invalid_request";
+
+    /// <summary>The requested action threw while executing against the target node.</summary>
+    public const string ActionFailed = "action_failed";
+
+    /// <summary>An unexpected bridge-side exception interrupted request processing.</summary>
+    public const string InternalError = "internal_error";
 }
 
 /// <summary>Error payload returned in a failed <see cref="BridgeResponse"/>.</summary>
@@ -39,5 +45,6 @@ public sealed class ErrorDto
 
     /// <summary>Human-readable description of the error. May be null.</summary>
     [JsonPropertyName("message")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Message { get; init; }
 }

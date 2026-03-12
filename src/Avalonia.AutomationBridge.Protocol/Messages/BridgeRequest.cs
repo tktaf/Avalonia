@@ -53,6 +53,7 @@ public sealed class BridgeRequest
 {
     /// <summary>Client-assigned correlation identifier echoed in the response.</summary>
     [JsonPropertyName("requestId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RequestId { get; init; }
 
     /// <summary>Action to perform; one of the constants on <see cref="BridgeAction"/>.</summary>
@@ -61,38 +62,47 @@ public sealed class BridgeRequest
 
     /// <summary>Root window handle required for query and action requests.</summary>
     [JsonPropertyName("rootId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RootId { get; init; }
 
     /// <summary>Target node handle for describe, invoke, set-value, toggle, and similar actions.</summary>
     [JsonPropertyName("nodeId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? NodeId { get; init; }
 
     /// <summary>Selector for query requests.</summary>
     [JsonPropertyName("selector")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public SelectorDto? Selector { get; init; }
 
     /// <summary>Maximum number of results to return from a query. Defaults to 1.</summary>
     [JsonPropertyName("maxResults")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public int? MaxResults { get; init; }
 
     /// <summary>Value string for set-value requests.</summary>
     [JsonPropertyName("value")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Value { get; init; }
 
     /// <summary>Horizontal scroll amount for scroll requests.</summary>
     [JsonPropertyName("horizontalAmount")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? HorizontalAmount { get; init; }
 
     /// <summary>Vertical scroll amount for scroll requests.</summary>
     [JsonPropertyName("verticalAmount")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? VerticalAmount { get; init; }
 
     /// <summary>Horizontal scroll percentage for set-scroll-percent requests.</summary>
     [JsonPropertyName("horizontalPercent")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? HorizontalPercent { get; init; }
 
     /// <summary>Vertical scroll percentage for set-scroll-percent requests.</summary>
     [JsonPropertyName("verticalPercent")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? VerticalPercent { get; init; }
 
     /// <summary>
@@ -100,5 +110,6 @@ public sealed class BridgeRequest
     /// The bridge will return <see cref="BridgeErrorCode.StaleRevision"/> if this is outdated.
     /// </summary>
     [JsonPropertyName("sinceRevision")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public long? SinceRevision { get; init; }
 }

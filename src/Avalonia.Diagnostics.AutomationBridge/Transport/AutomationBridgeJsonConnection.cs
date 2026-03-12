@@ -34,14 +34,20 @@ internal static class AutomationBridgeJsonConnection
 
     private static BridgeResponse Dispatch(Func<BridgeRequest, BridgeResponse> dispatcher, string json)
     {
+        BridgeRequest? request = null;
+
         try
         {
-            var request = AutomationBridgeJsonSerializer.DeserializeRequest(json);
+            request = AutomationBridgeJsonSerializer.DeserializeRequest(json);
             return dispatcher(request);
         }
         catch (JsonException e)
         {
             return BridgeResponse.Failure(BridgeErrorCode.InvalidRequest, e.Message);
+        }
+        catch (Exception e)
+        {
+            return BridgeResponse.Failure(BridgeErrorCode.InternalError, e.Message, request?.RequestId);
         }
     }
 }

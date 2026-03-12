@@ -14,10 +14,29 @@ namespace Avalonia.Diagnostics.AutomationBridge.Snapshot;
 /// </summary>
 internal sealed class AutomationDeltaBuilder : IDisposable
 {
+    private static readonly string[] s_patchFieldOrder =
+    [
+        NodePatchField.Enabled,
+        NodePatchField.Focused,
+        NodePatchField.Value,
+        NodePatchField.Offscreen,
+        NodePatchField.Selected,
+        NodePatchField.Expanded,
+        NodePatchField.Checked,
+        NodePatchField.Name,
+        NodePatchField.State,
+        NodePatchField.Metadata,
+    ];
+
     private readonly AutomationBridgeSession _session;
     private readonly AutomationPeer _rootPeer;
     private readonly IRootProvider? _rootProvider;
     private readonly HashSet<AutomationPeer> _knownPeers = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<string, NodePatchDto>? _capturedUpdated;
+    private List<string>? _capturedAdded;
+    private List<string>? _capturedRemoved;
+    private string? _capturedFocus;
+    private long? _capturedStartingRevision;
     private DeltaDto _lastDelta;
     private long _revision;
 
@@ -41,16 +60,52 @@ internal sealed class AutomationDeltaBuilder : IDisposable
 
     public long CurrentRevision => _revision;
 
+    public void BeginActionCapture(long startingRevision)
+    {
+        _capturedStartingRevision = startingRevision;
+        _capturedUpdated = new Dictionary<string, NodePatchDto>(StringComparer.Ordinal);
+        _capturedAdded = [];
+        _capturedRemoved = [];
+        _capturedFocus = null;
+    }
+
     public DeltaDto CompleteAction(AutomationPeer peer, long startingRevision)
     {
-        if (_revision != startingRevision)
-            return _lastDelta;
+        try
+        {
+            if (_revision == startingRevision)
+                return EmptyDelta(startingRevision);
 
-        return PublishDelta(
-            updated: new[] { BuildPatch(peer) },
-            added: Array.Empty<string>(),
-            removed: Array.Empty<string>(),
-            focus: null);
+            if (_capturedStartingRevision == startingRevision
+                && _capturedUpdated is not null
+                && _capturedAdded is not null
+                && _capturedRemoved is not null)
+            {
+                return new DeltaDto
+                {
+                    Revision = _revision,
+                    Updated = [.. _capturedUpdated.Values],
+                    Added = [.. _capturedAdded],
+                    Removed = [.. _capturedRemoved],
+                    Focus = _capturedFocus,
+                };
+            }
+
+            return _lastDelta;
+        }
+        finally
+        {
+            EndActionCapture();
+        }
+    }
+
+    public void EndActionCapture()
+    {
+        _capturedStartingRevision = null;
+        _capturedUpdated = null;
+        _capturedAdded = null;
+        _capturedRemoved = null;
+        _capturedFocus = null;
     }
 
     public BridgeResponse GetDelta(long? sinceRevision, string? requestId = null)
@@ -160,7 +215,160 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             Focus = focus,
         };
 
+        CaptureActionDelta(_lastDelta);
+
         return _lastDelta;
+    }
+
+    private void CaptureActionDelta(DeltaDto delta)
+    {
+        if (_capturedStartingRevision is not long startingRevision
+            || delta.Revision <= startingRevision
+            || _capturedUpdated is null
+            || _capturedAdded is null
+            || _capturedRemoved is null)
+        {
+            return;
+        }
+
+        foreach (var patch in delta.Updated)
+        {
+            if (_capturedRemoved.Contains(patch.Id))
+                continue;
+
+            _capturedUpdated[patch.Id] = _capturedUpdated.TryGetValue(patch.Id, out var existing)
+                ? MergePatch(existing, patch)
+                : patch;
+        }
+
+        MergeAddedHandles(_capturedAdded, _capturedRemoved, delta.Added);
+        MergeRemovedHandles(_capturedRemoved, _capturedAdded, _capturedUpdated, delta.Removed);
+
+        if (delta.Focus is not null)
+            _capturedFocus = delta.Focus;
+    }
+
+    private static NodePatchDto MergePatch(NodePatchDto existing, NodePatchDto update)
+    {
+        var cleared = new HashSet<string>(StringComparer.Ordinal);
+        MergeCleared(cleared, existing.Cleared);
+
+        return new NodePatchDto
+        {
+            Id = existing.Id,
+            Enabled = MergeNullableValue(existing.Enabled, update.Enabled, NodePatchField.Enabled, update.Cleared, cleared),
+            Focused = MergeNullableValue(existing.Focused, update.Focused, NodePatchField.Focused, update.Cleared, cleared),
+            Value = MergeReferenceValue(existing.Value, update.Value, NodePatchField.Value, update.Cleared, cleared),
+            Offscreen = MergeNullableValue(existing.Offscreen, update.Offscreen, NodePatchField.Offscreen, update.Cleared, cleared),
+            Selected = MergeNullableValue(existing.Selected, update.Selected, NodePatchField.Selected, update.Cleared, cleared),
+            Expanded = MergeNullableValue(existing.Expanded, update.Expanded, NodePatchField.Expanded, update.Cleared, cleared),
+            Checked = MergeNullableValue(existing.Checked, update.Checked, NodePatchField.Checked, update.Cleared, cleared),
+            Name = MergeReferenceValue(existing.Name, update.Name, NodePatchField.Name, update.Cleared, cleared),
+            State = MergeReferenceValue(existing.State, update.State, NodePatchField.State, update.Cleared, cleared),
+            Metadata = MergeReferenceValue(existing.Metadata, update.Metadata, NodePatchField.Metadata, update.Cleared, cleared),
+            Cleared = ToClearedArray(cleared),
+        };
+    }
+
+    private static bool? MergeNullableValue(
+        bool? existing,
+        bool? update,
+        string field,
+        string[]? updateCleared,
+        HashSet<string> cleared)
+    {
+        if (ContainsField(updateCleared, field))
+        {
+            cleared.Add(field);
+            return null;
+        }
+
+        if (update is not null)
+        {
+            cleared.Remove(field);
+            return update;
+        }
+
+        return cleared.Contains(field) ? null : existing;
+    }
+
+    private static T? MergeReferenceValue<T>(
+        T? existing,
+        T? update,
+        string field,
+        string[]? updateCleared,
+        HashSet<string> cleared)
+        where T : class
+    {
+        if (ContainsField(updateCleared, field))
+        {
+            cleared.Add(field);
+            return null;
+        }
+
+        if (update is not null)
+        {
+            cleared.Remove(field);
+            return update;
+        }
+
+        return cleared.Contains(field) ? null : existing;
+    }
+
+    private static void MergeCleared(HashSet<string> target, string[]? cleared)
+    {
+        if (cleared is null)
+            return;
+
+        foreach (var field in cleared)
+            target.Add(field);
+    }
+
+    private static bool ContainsField(string[]? cleared, string field)
+        => cleared is not null
+           && Array.Exists(cleared, existing => string.Equals(existing, field, StringComparison.Ordinal));
+
+    private static string[]? ToClearedArray(HashSet<string> cleared)
+    {
+        if (cleared.Count == 0)
+            return null;
+
+        var ordered = new List<string>(cleared.Count);
+        foreach (var field in s_patchFieldOrder)
+        {
+            if (cleared.Contains(field))
+                ordered.Add(field);
+        }
+
+        return ordered.Count == 0 ? [.. cleared] : [.. ordered];
+    }
+
+    private static void MergeAddedHandles(List<string> added, List<string> removed, IEnumerable<string> handles)
+    {
+        foreach (var handle in handles)
+        {
+            removed.Remove(handle);
+            if (!added.Exists(existing => string.Equals(existing, handle, StringComparison.Ordinal)))
+                added.Add(handle);
+        }
+    }
+
+    private static void MergeRemovedHandles(
+        List<string> removed,
+        List<string> added,
+        Dictionary<string, NodePatchDto> updated,
+        IEnumerable<string> handles)
+    {
+        foreach (var handle in handles)
+        {
+            updated.Remove(handle);
+
+            if (added.Remove(handle))
+                continue;
+
+            if (!removed.Exists(existing => string.Equals(existing, handle, StringComparison.Ordinal)))
+                removed.Add(handle);
+        }
     }
 
     private NodePatchDto BuildPatch(AutomationPeer peer)
@@ -173,7 +381,23 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             Focused = summary.Focused,
             Name = summary.Name,
             Offscreen = summary.Offscreen,
+            Selected = summary.Selected,
+            Expanded = summary.Expanded,
+            Checked = summary.Checked,
             Value = summary.Value,
+            State = summary.State,
+            Metadata = summary.Metadata,
+            Cleared = BuildClearedFields(
+                (NodePatchField.Enabled, summary.Enabled is null),
+                (NodePatchField.Focused, summary.Focused is null),
+                (NodePatchField.Value, summary.Value is null),
+                (NodePatchField.Offscreen, summary.Offscreen is null),
+                (NodePatchField.Selected, summary.Selected is null),
+                (NodePatchField.Expanded, summary.Expanded is null),
+                (NodePatchField.Checked, summary.Checked is null),
+                (NodePatchField.Name, summary.Name is null),
+                (NodePatchField.State, summary.State is null),
+                (NodePatchField.Metadata, summary.Metadata is null)),
         };
     }
 
@@ -183,19 +407,105 @@ internal sealed class AutomationDeltaBuilder : IDisposable
 
         if (property == AutomationElementIdentifiers.NameProperty)
         {
-            return new NodePatchDto { Id = id, Name = peer.GetName() };
+            var (name, metadata) = AutomationNodeSummaryBuilder.BuildNameAndMetadataForPatch(peer);
+            return new NodePatchDto
+            {
+                Id = id,
+                Name = name,
+                Metadata = metadata,
+                Cleared = BuildClearedFields(
+                    (NodePatchField.Name, name is null),
+                    (NodePatchField.Metadata, metadata is null)),
+            };
+        }
+
+        if (property == AutomationElementIdentifiers.HelpTextProperty
+            || property == AutomationElementIdentifiers.ItemTypeProperty)
+        {
+            var (_, metadata) = AutomationNodeSummaryBuilder.BuildNameAndMetadataForPatch(peer);
+            return new NodePatchDto
+            {
+                Id = id,
+                Metadata = metadata,
+                Cleared = BuildClearedFields((NodePatchField.Metadata, metadata is null)),
+            };
         }
 
         if (property == ValuePatternIdentifiers.ValueProperty)
         {
+            var value = AutomationNodeSummaryBuilder.TryGetValue(peer);
             return new NodePatchDto
             {
                 Id = id,
-                Value = peer.GetProvider<IValueProvider>()?.Value,
+                Value = value,
+                Cleared = BuildClearedFields((NodePatchField.Value, value is null)),
+            };
+        }
+
+        if (property == SelectionItemPatternIdentifiers.IsSelectedProperty)
+        {
+            var selected = AutomationNodeSummaryBuilder.GetSelected(peer);
+            return new NodePatchDto
+            {
+                Id = id,
+                Selected = selected,
+                Cleared = BuildClearedFields((NodePatchField.Selected, selected is null)),
+            };
+        }
+
+        if (property == ExpandCollapsePatternIdentifiers.ExpandCollapseStateProperty)
+        {
+            var expanded = AutomationNodeSummaryBuilder.GetExpanded(peer);
+            return new NodePatchDto
+            {
+                Id = id,
+                Expanded = expanded,
+                Cleared = BuildClearedFields((NodePatchField.Expanded, expanded is null)),
+            };
+        }
+
+        if (property == TogglePatternIdentifiers.ToggleStateProperty)
+        {
+            var checkedState = AutomationNodeSummaryBuilder.GetChecked(peer);
+            return new NodePatchDto
+            {
+                Id = id,
+                Checked = checkedState,
+                Cleared = BuildClearedFields((NodePatchField.Checked, checkedState is null)),
+            };
+        }
+
+        if (property == AutomationElementIdentifiers.ItemStatusProperty)
+        {
+            var state = AutomationNodeSummaryBuilder.GetState(peer);
+            return new NodePatchDto
+            {
+                Id = id,
+                State = state,
+                Cleared = BuildClearedFields((NodePatchField.State, state is null)),
             };
         }
 
         return null;
+    }
+
+    private static string[]? BuildClearedFields(params (string Field, bool ShouldClear)[] fields)
+    {
+        List<string>? cleared = null;
+
+        foreach (var (field, shouldClear) in fields)
+            AddClearedField(ref cleared, field, shouldClear);
+
+        return cleared?.ToArray();
+    }
+
+    private static void AddClearedField(ref List<string>? cleared, string field, bool shouldClear)
+    {
+        if (!shouldClear)
+            return;
+
+        cleared ??= [];
+        cleared.Add(field);
     }
 
     private static IEnumerable<AutomationPeer> EnumerateSubtree(AutomationPeer root)

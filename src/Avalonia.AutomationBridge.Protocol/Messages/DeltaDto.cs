@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Avalonia.AutomationBridge.Protocol.Messages;
@@ -14,6 +15,7 @@ public sealed class DeltaDto
 
     /// <summary>Handle of the element that now holds focus, or null if focus is unchanged.</summary>
     [JsonPropertyName("focus")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Focus { get; init; }
 
     /// <summary>Nodes whose properties changed.  Each entry contains only the fields that changed.</summary>
@@ -38,21 +40,74 @@ public sealed class NodePatchDto
 
     /// <summary>Updated enabled state, or null if unchanged.</summary>
     [JsonPropertyName("enabled")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Enabled { get; init; }
 
     /// <summary>Updated focused state, or null if unchanged.</summary>
     [JsonPropertyName("focused")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Focused { get; init; }
 
     /// <summary>Updated value string, or null if unchanged.</summary>
     [JsonPropertyName("value")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Value { get; init; }
 
     /// <summary>Updated offscreen state, or null if unchanged.</summary>
     [JsonPropertyName("offscreen")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Offscreen { get; init; }
+
+    /// <summary>Updated selected state, or null if unchanged.</summary>
+    [JsonPropertyName("selected")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Selected { get; init; }
+
+    /// <summary>Updated expanded state, or null if unchanged.</summary>
+    [JsonPropertyName("expanded")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Expanded { get; init; }
+
+    /// <summary>Updated checked state, or null if unchanged.</summary>
+    [JsonPropertyName("checked")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Checked { get; init; }
 
     /// <summary>Updated name, or null if unchanged.</summary>
     [JsonPropertyName("name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; init; }
+
+    /// <summary>Updated state bag, or null if unchanged.</summary>
+    [JsonPropertyName("state")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? State { get; init; }
+
+    /// <summary>Updated metadata bag, or null if unchanged.</summary>
+    [JsonPropertyName("metadata")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+
+    /// <summary>
+    /// Fields that were explicitly cleared to null by this patch.
+    /// This distinguishes "changed to null" from "field omitted because unchanged".
+    /// </summary>
+    [JsonPropertyName("cleared")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? Cleared { get; init; }
+}
+
+/// <summary>Stable field names used by <see cref="NodePatchDto.Cleared"/>.</summary>
+public static class NodePatchField
+{
+    public const string Enabled = "enabled";
+    public const string Focused = "focused";
+    public const string Value = "value";
+    public const string Offscreen = "offscreen";
+    public const string Selected = "selected";
+    public const string Expanded = "expanded";
+    public const string Checked = "checked";
+    public const string Name = "name";
+    public const string State = "state";
+    public const string Metadata = "metadata";
 }

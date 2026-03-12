@@ -1,4 +1,5 @@
 using Avalonia.Automation.Provider;
+using Avalonia.Automation;
 using Avalonia.AutomationBridge.Protocol.Messages;
 using Avalonia.Diagnostics.AutomationBridge.Actions;
 using Avalonia.Diagnostics.AutomationBridge.Session;
@@ -110,6 +111,26 @@ public sealed class ActionDispatchTests
         Assert.Equal(1, provider.CollapseCallCount);
     }
 
+    [Theory]
+    [InlineData(BridgeAction.Expand)]
+    [InlineData(BridgeAction.Collapse)]
+    public void Dispatch_ReturnsActionNotSupported_ForLeafNodeExpandCollapse(string action)
+    {
+        var peer = new StubAutomationPeer();
+        var provider = new StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState.LeafNode);
+        peer.RegisterProvider<IExpandCollapseProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest { Action = action, NodeId = fixture.NodeId });
+
+        Assert.False(response.Ok);
+        Assert.Equal(BridgeErrorCode.ActionNotSupported, response.Error!.Code);
+        Assert.Equal(0, provider.ExpandCallCount);
+        Assert.Equal(0, provider.CollapseCallCount);
+    }
+
     [Fact]
     public void Dispatch_SetsKeyboardFocus()
     {
@@ -168,6 +189,131 @@ public sealed class ActionDispatchTests
         Assert.True(response.Ok);
         Assert.Equal(25, provider.LastHorizontalPercent);
         Assert.Equal(75, provider.LastVerticalPercent);
+        Assert.Equal(BridgeActionCompletionState.Accepted, response.Completion?.State);
+    }
+
+    [Fact]
+    public void Dispatch_ReturnsAcceptedCompletion_WhenNoObservableDeltaWasPublished()
+    {
+        var peer = new StubAutomationPeer();
+        var provider = new StubInvokeProvider();
+        peer.RegisterProvider<IInvokeProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest { Action = BridgeAction.Invoke, NodeId = fixture.NodeId });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Accepted, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        Assert.Empty(response.Delta!.Updated);
+        Assert.Empty(response.Delta.Added);
+        Assert.Empty(response.Delta.Removed);
+    }
+
+    [Fact]
+    public void Dispatch_ReturnsCompletedCompletion_WhenActionPublishesDelta()
+    {
+        var peer = new StubAutomationPeer();
+        var provider = new RaisingValueProvider(peer);
+        peer.RegisterProvider<IValueProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest
+            {
+                Action = BridgeAction.SetValue,
+                NodeId = fixture.NodeId,
+                Value = "changed",
+            });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Completed, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        Assert.Single(response.Delta!.Updated);
+        Assert.Equal("changed", response.Delta.Updated[0].Value);
+    }
+
+    [Fact]
+    public void Dispatch_AggregatesMultipleDeltaEvents_FromOneAction()
+    {
+        var peer = new StubAutomationPeer { Name = "Original" };
+        var provider = new MultiEventRaisingValueProvider(peer);
+        peer.RegisterProvider<IValueProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest
+            {
+                Action = BridgeAction.SetValue,
+                NodeId = fixture.NodeId,
+                Value = "changed",
+            });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Completed, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        var patch = Assert.Single(response.Delta!.Updated);
+        Assert.Equal("Renamed", patch.Name);
+        Assert.Equal("changed", patch.Value);
+    }
+
+    [Fact]
+    public void Dispatch_PreservesClearToNullFields_WhenAggregatingMultipleDeltaEvents()
+    {
+        var peer = new StubAutomationPeer
+        {
+            Name = "Original",
+            ItemStatus = "busy; modal=true",
+        };
+        var provider = new MultiEventClearingValueProvider(peer);
+        peer.RegisterProvider<IValueProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest
+            {
+                Action = BridgeAction.SetValue,
+                NodeId = fixture.NodeId,
+                Value = "changed",
+            });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Completed, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        var patch = Assert.Single(response.Delta!.Updated);
+        var cleared = Assert.IsType<string[]>(patch.Cleared);
+        Assert.Equal("changed", patch.Value);
+        Assert.Null(patch.State);
+        Assert.Equal([NodePatchField.State], cleared);
+    }
+
+    [Fact]
+    public void Dispatch_PreservesSuccessfulCompletion_WhenValueGetterThrowsDuringDeltaCapture()
+    {
+        var peer = new StubAutomationPeer();
+        var provider = new ThrowingGetterRaisingValueProvider(peer);
+        peer.RegisterProvider<IValueProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest
+            {
+                Action = BridgeAction.SetValue,
+                NodeId = fixture.NodeId,
+                Value = "changed",
+            });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Completed, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        Assert.Single(response.Delta!.Updated);
+        Assert.Null(response.Delta.Updated[0].Value);
     }
 
     [Fact]
@@ -198,6 +344,63 @@ public sealed class ActionDispatchTests
         Assert.False(response.Ok);
         Assert.Equal(BridgeErrorCode.ElementNotEnabled, response.Error!.Code);
         Assert.Equal(0, provider.CallCount);
+    }
+
+    [Fact]
+    public void Dispatch_ReturnsStructuredError_WhenActionProviderThrows()
+    {
+        var peer = new StubAutomationPeer();
+        var provider = new ThrowingSelectionItemProvider();
+        peer.RegisterProvider<ISelectionItemProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest { Action = BridgeAction.Select, NodeId = fixture.NodeId, RequestId = "select-throw" });
+
+        Assert.False(response.Ok);
+        Assert.Equal("select-throw", response.RequestId);
+        Assert.Equal(BridgeErrorCode.ActionFailed, response.Error!.Code);
+        Assert.Contains("select", response.Error.Message!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Dispatch_ReturnsStructuredError_WhenEnabledCheckThrows()
+    {
+        var peer = new StubAutomationPeer
+        {
+            EnabledException = new InvalidOperationException("enabled exploded"),
+        };
+        peer.RegisterProvider<IInvokeProvider>(new StubInvokeProvider());
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest { Action = BridgeAction.Invoke, NodeId = fixture.NodeId, RequestId = "invoke-enabled-throw" });
+
+        Assert.False(response.Ok);
+        Assert.Equal("invoke-enabled-throw", response.RequestId);
+        Assert.Equal(BridgeErrorCode.ActionFailed, response.Error!.Code);
+        Assert.Contains("invoke", response.Error.Message!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(BridgeAction.Expand)]
+    [InlineData(BridgeAction.Collapse)]
+    public void Dispatch_ReturnsStructuredError_WhenExpandCollapseStateGetterThrows(string action)
+    {
+        var peer = new StubAutomationPeer();
+        peer.RegisterProvider<IExpandCollapseProvider>(new ThrowingExpandCollapseStateProvider());
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest { Action = action, NodeId = fixture.NodeId, RequestId = "expand-state-throw" });
+
+        Assert.False(response.Ok);
+        Assert.Equal("expand-state-throw", response.RequestId);
+        Assert.Equal(BridgeErrorCode.ActionFailed, response.Error!.Code);
+        Assert.Contains(action, response.Error.Message!, StringComparison.OrdinalIgnoreCase);
     }
 
     private static ActionFixture CreateFixture(StubAutomationPeer node)
@@ -234,6 +437,84 @@ public sealed class ActionDispatchTests
         public void SetValue(string? value) => Value = value;
     }
 
+    private sealed class RaisingValueProvider : IValueProvider
+    {
+        private readonly StubAutomationPeer _peer;
+
+        public RaisingValueProvider(StubAutomationPeer peer)
+        {
+            _peer = peer;
+        }
+
+        public bool IsReadOnly => false;
+        public string? Value { get; private set; }
+
+        public void SetValue(string? value)
+        {
+            Value = value;
+            _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
+        }
+    }
+
+    private sealed class ThrowingGetterRaisingValueProvider : IValueProvider
+    {
+        private readonly StubAutomationPeer _peer;
+
+        public ThrowingGetterRaisingValueProvider(StubAutomationPeer peer)
+        {
+            _peer = peer;
+        }
+
+        public bool IsReadOnly => false;
+
+        public string? Value => throw new InvalidOperationException("value exploded");
+
+        public void SetValue(string? value)
+            => _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
+    }
+
+    private sealed class MultiEventRaisingValueProvider : IValueProvider
+    {
+        private readonly StubAutomationPeer _peer;
+
+        public MultiEventRaisingValueProvider(StubAutomationPeer peer)
+        {
+            _peer = peer;
+        }
+
+        public bool IsReadOnly => false;
+        public string? Value { get; private set; }
+
+        public void SetValue(string? value)
+        {
+            _peer.Name = "Renamed";
+            _peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, "Original", "Renamed");
+            Value = value;
+            _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
+        }
+    }
+
+    private sealed class MultiEventClearingValueProvider : IValueProvider
+    {
+        private readonly StubAutomationPeer _peer;
+
+        public MultiEventClearingValueProvider(StubAutomationPeer peer)
+        {
+            _peer = peer;
+        }
+
+        public bool IsReadOnly => false;
+        public string? Value { get; private set; }
+
+        public void SetValue(string? value)
+        {
+            _peer.ItemStatus = null;
+            _peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemStatusProperty, "busy; modal=true", null);
+            Value = value;
+            _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
+        }
+    }
+
     private sealed class StubToggleProvider : IToggleProvider
     {
         public int CallCount { get; private set; }
@@ -255,9 +536,27 @@ public sealed class ActionDispatchTests
         public void Select() => SelectCallCount++;
     }
 
+    private sealed class ThrowingSelectionItemProvider : ISelectionItemProvider
+    {
+        public bool IsSelected => false;
+        public ISelectionProvider? SelectionContainer => null;
+
+        public void AddToSelection() { }
+
+        public void RemoveFromSelection() { }
+
+        public void Select() => throw new InvalidOperationException("selection exploded");
+    }
+
     private sealed class StubExpandCollapseProvider : IExpandCollapseProvider
     {
-        public Avalonia.Automation.ExpandCollapseState ExpandCollapseState => Avalonia.Automation.ExpandCollapseState.Collapsed;
+        public StubExpandCollapseProvider(
+            Avalonia.Automation.ExpandCollapseState expandCollapseState = Avalonia.Automation.ExpandCollapseState.Collapsed)
+        {
+            ExpandCollapseState = expandCollapseState;
+        }
+
+        public Avalonia.Automation.ExpandCollapseState ExpandCollapseState { get; }
         public bool ShowsMenu => false;
         public int ExpandCallCount { get; private set; }
         public int CollapseCallCount { get; private set; }
@@ -291,5 +590,15 @@ public sealed class ActionDispatchTests
             LastHorizontalPercent = horizontalPercent;
             LastVerticalPercent = verticalPercent;
         }
+    }
+
+    private sealed class ThrowingExpandCollapseStateProvider : IExpandCollapseProvider
+    {
+        public Avalonia.Automation.ExpandCollapseState ExpandCollapseState
+            => throw new InvalidOperationException("expand state exploded");
+
+        public bool ShowsMenu => false;
+        public void Expand() { }
+        public void Collapse() { }
     }
 }

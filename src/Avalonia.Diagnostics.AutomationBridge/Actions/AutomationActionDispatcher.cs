@@ -25,38 +25,57 @@ public static class AutomationActionDispatcher
                 request.RequestId);
         }
 
-        if (!peer.IsEnabled())
+        try
         {
+            if (!peer.IsEnabled())
+            {
+                return BridgeResponse.Failure(
+                    BridgeErrorCode.ElementNotEnabled,
+                    $"Node '{request.NodeId}' is disabled.",
+                    request.RequestId);
+            }
+
+            var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
+            var startingRevision = deltaBuilder.CurrentRevision;
+            deltaBuilder.BeginActionCapture(startingRevision);
+
+            var response = request.Action switch
+            {
+                BridgeAction.Invoke => Invoke(peer, request),
+                BridgeAction.SetValue => SetValue(peer, request),
+                BridgeAction.Toggle => Toggle(peer, request),
+                BridgeAction.Select => Select(peer, request),
+                BridgeAction.Expand => Expand(peer, request),
+                BridgeAction.Collapse => Collapse(peer, request),
+                BridgeAction.SetFocus => SetFocus(peer, request),
+                BridgeAction.ShowContextMenu => ShowContextMenu(peer, request),
+                BridgeAction.Scroll => Scroll(peer, request),
+                BridgeAction.SetScrollPercent => SetScrollPercent(peer, request),
+                _ => Unsupported(request, $"Action '{request.Action}' is not supported."),
+            };
+
+            if (!response.Ok)
+            {
+                deltaBuilder.EndActionCapture();
+                return response;
+            }
+
+            var delta = deltaBuilder.CompleteAction(peer, startingRevision);
+            var completionState = delta.Revision == startingRevision
+                ? BridgeActionCompletionState.Accepted
+                : BridgeActionCompletionState.Completed;
+
+            return BridgeResponse.WithCompletion(delta, completionState, request.RequestId);
+        }
+        catch (Exception e)
+        {
+            session.GetOrCreateDeltaBuilderForPeer(peer).EndActionCapture();
+
             return BridgeResponse.Failure(
-                BridgeErrorCode.ElementNotEnabled,
-                $"Node '{request.NodeId}' is disabled.",
+                BridgeErrorCode.ActionFailed,
+                $"Action '{request.Action}' failed: {e.Message}",
                 request.RequestId);
         }
-
-        var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
-        var startingRevision = deltaBuilder.CurrentRevision;
-
-        var response = request.Action switch
-        {
-            BridgeAction.Invoke => Invoke(peer, request),
-            BridgeAction.SetValue => SetValue(peer, request),
-            BridgeAction.Toggle => Toggle(peer, request),
-            BridgeAction.Select => Select(peer, request),
-            BridgeAction.Expand => Expand(peer, request),
-            BridgeAction.Collapse => Collapse(peer, request),
-            BridgeAction.SetFocus => SetFocus(peer, request),
-            BridgeAction.ShowContextMenu => ShowContextMenu(peer, request),
-            BridgeAction.Scroll => Scroll(peer, request),
-            BridgeAction.SetScrollPercent => SetScrollPercent(peer, request),
-            _ => Unsupported(request, $"Action '{request.Action}' is not supported."),
-        };
-
-        if (!response.Ok)
-            return response;
-
-        return BridgeResponse.WithDelta(
-            deltaBuilder.CompleteAction(peer, startingRevision),
-            request.RequestId);
     }
 
     private static BridgeResponse Invoke(Avalonia.Automation.Peers.AutomationPeer peer, BridgeRequest request)
@@ -105,6 +124,13 @@ public static class AutomationActionDispatcher
         if (provider is null)
             return Unsupported(request, "Expand is not supported for this node.");
 
+        var state = GetExpandCollapseState(provider, request, BridgeAction.Expand);
+        if (!state.Ok)
+            return state.Response!;
+
+        if (state.Value == Avalonia.Automation.ExpandCollapseState.LeafNode)
+            return Unsupported(request, "Expand is not supported for this node.");
+
         provider.Expand();
         return BridgeResponse.Success(request.RequestId);
     }
@@ -113,6 +139,13 @@ public static class AutomationActionDispatcher
     {
         var provider = peer.GetProvider<IExpandCollapseProvider>();
         if (provider is null)
+            return Unsupported(request, "Collapse is not supported for this node.");
+
+        var state = GetExpandCollapseState(provider, request, BridgeAction.Collapse);
+        if (!state.Ok)
+            return state.Response!;
+
+        if (state.Value == Avalonia.Automation.ExpandCollapseState.LeafNode)
             return Unsupported(request, "Collapse is not supported for this node.");
 
         provider.Collapse();
@@ -176,6 +209,33 @@ public static class AutomationActionDispatcher
         };
     }
 
+    private static ExpandCollapseStateResult GetExpandCollapseState(
+        IExpandCollapseProvider provider,
+        BridgeRequest request,
+        string action)
+    {
+        try
+        {
+            return new ExpandCollapseStateResult(provider.ExpandCollapseState, null);
+        }
+        catch (Exception e)
+        {
+            return new ExpandCollapseStateResult(
+                null,
+                BridgeResponse.Failure(
+                    BridgeErrorCode.ActionFailed,
+                    $"Action '{action}' failed: {e.Message}",
+                    request.RequestId));
+        }
+    }
+
     private static BridgeResponse Unsupported(BridgeRequest request, string message)
         => BridgeResponse.Failure(BridgeErrorCode.ActionNotSupported, message, request.RequestId);
+
+    private sealed record ExpandCollapseStateResult(
+        Avalonia.Automation.ExpandCollapseState? Value,
+        BridgeResponse? Response)
+    {
+        public bool Ok => Response is null;
+    }
 }

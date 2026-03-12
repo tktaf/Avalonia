@@ -1,5 +1,7 @@
+using Avalonia;
 using System.Linq;
 using Avalonia.Automation.Peers;
+using Avalonia.Automation.Provider;
 using Avalonia.AutomationBridge.Protocol.Messages;
 using Avalonia.Diagnostics.AutomationBridge.Selection;
 using Avalonia.Diagnostics.AutomationBridge.Session;
@@ -57,6 +59,68 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_FindsNode_ByAutomationIdAlias()
+    {
+        var fixture = CreateFixture();
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { AutomationId = "save-secondary" });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_SkipsPeers_WithThrowingSelectorGetters()
+    {
+        var fixture = CreateFixture();
+        var broken = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            NameException = new InvalidOperationException("name exploded"),
+            AutomationIdException = new InvalidOperationException("id exploded"),
+            ClassNameException = new InvalidOperationException("class exploded"),
+        };
+        fixture.Toolbar.AddChild(broken);
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { AutomationId = "save-secondary" });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_SkipsPeers_WithThrowingProviderStateGetters()
+    {
+        var fixture = CreateFixture();
+        var broken = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            Name = "Broken Save",
+        };
+        broken.RegisterProvider<ISelectionItemProvider>(new ThrowingSelectionItemProvider());
+        fixture.Toolbar.AddChild(broken);
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { Selected = true });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_FindsNode_ByRole()
     {
         var fixture = CreateFixture();
@@ -69,6 +133,76 @@ public sealed class SelectorTests
         Assert.True(response.Ok);
         Assert.Single(nodes);
         Assert.Equal("Search", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_SkipsPeers_WithThrowingRoleGetter()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var broken = new StubAutomationPeer
+        {
+            Name = "Broken",
+            ControlTypeException = new InvalidOperationException("role exploded"),
+        };
+        var search = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Edit,
+            Name = "Search",
+        };
+        root.AddChild(broken);
+        root.AddChild(search);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto { Role = "edit" });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Search", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_DoesNotTreatThrowingRoleGetter_AsCustomRole()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var broken = new StubAutomationPeer
+        {
+            Name = "Broken",
+            ControlTypeException = new InvalidOperationException("role exploded"),
+        };
+        var actualCustom = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Custom,
+            Name = "Actual Custom",
+        };
+        root.AddChild(broken);
+        root.AddChild(actualCustom);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto { Role = "custom" });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Actual Custom", nodes[0].Name);
     }
 
     [Fact]
@@ -117,6 +251,150 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_FindsNode_BySelectedState()
+    {
+        var fixture = CreateFixture();
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { Selected = true });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_FindsNode_ByVisibleState()
+    {
+        var fixture = CreateFixture();
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { Visible = false });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Cancel", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_FindsNode_BySupportedAction()
+    {
+        var fixture = CreateFixture();
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { HasAction = "select" });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_FindsNode_ByPublishedState()
+    {
+        var fixture = CreateFixture();
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { State = new Dictionary<string, string> { ["currentTab"] = "Contract" } });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_FindsNode_ByCanonicalBridgeActionName()
+    {
+        var fixture = CreateFixture();
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { HasAction = BridgeAction.SetFocus });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Search", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_FindsNode_ByScrollAction()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var timeline = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Pane,
+            Name = "Timeline",
+        };
+        timeline.RegisterProvider<IScrollProvider>(new StubScrollProvider());
+        root.AddChild(timeline);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto { HasAction = BridgeAction.SetScrollPercent });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Timeline", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_DoesNotMatchLeafNode_ByExpandAction()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var expander = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Expander,
+            Name = "Details",
+        };
+        expander.RegisterProvider<IExpandCollapseProvider>(
+            new StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState.Collapsed));
+        var leaf = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.TreeItem,
+            Name = "Leaf",
+        };
+        leaf.RegisterProvider<IExpandCollapseProvider>(
+            new StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState.LeafNode));
+        root.AddChild(expander);
+        root.AddChild(leaf);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto { HasAction = BridgeAction.Expand });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Details", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_RestrictsMatches_WithWithinHandle()
     {
         var fixture = CreateFixture();
@@ -129,6 +407,82 @@ public sealed class SelectorTests
                 Name = "save",
                 NameSubstring = true,
                 Within = withinHandle,
+            },
+            maxResults: 2);
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_SkipsPathCandidates_WithThrowingRoleGetter()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var brokenToolbar = new StubAutomationPeer
+        {
+            Name = "Primary Actions",
+            ControlTypeException = new InvalidOperationException("role exploded"),
+        };
+        var brokenSave = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            Name = "Save Draft",
+        };
+        var toolbar = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Group,
+            Name = "Toolbar",
+        };
+        var saveAs = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            Name = "Save As",
+        };
+
+        brokenToolbar.AddChild(brokenSave);
+        toolbar.AddChild(saveAs);
+        root.AddChild(brokenToolbar);
+        root.AddChild(toolbar);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto
+            {
+                Name = "save",
+                NameSubstring = true,
+                Path = ["window", "toolbar"],
+            },
+            maxResults: 2);
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_RestrictsMatches_WithContainerIdAlias()
+    {
+        var fixture = CreateFixture();
+        var withinHandle = fixture.Session.GetOrAssignHandle(fixture.Toolbar);
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto
+            {
+                Name = "save",
+                NameSubstring = true,
+                ContainerId = withinHandle,
             },
             maxResults: 2);
         var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
@@ -198,6 +552,70 @@ public sealed class SelectorTests
         Assert.Equal(BridgeErrorCode.RootNotFound, response.Error!.Code);
     }
 
+    [Fact]
+    public void Evaluate_ProjectsRequestedFields()
+    {
+        var fixture = CreateFixture();
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto
+            {
+                AutomationId = "save-secondary",
+                Fields = ["name", "selected"],
+            });
+        var node = Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes));
+
+        Assert.True(response.Ok);
+        Assert.Equal("Save As", node.Name);
+        Assert.True(node.Selected);
+        Assert.Null(node.AutomationId);
+        Assert.Null(node.ClassName);
+        Assert.Null(node.Enabled);
+        Assert.Null(node.Actions);
+        Assert.NotNull(node.RootId);
+        Assert.NotNull(node.Role);
+    }
+
+    [Fact]
+    public void Evaluate_ProjectsRequestedFields_WithoutTouchingOmittedSummaryGetters()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var child = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            AutomationId = "save-secondary",
+            Name = "Save As",
+            BoundingRectangle = new Rect(10, 20, 30, 40),
+            HelpText = "Open the save dialog",
+            ItemType = "toolbar-action",
+        };
+        root.AddChild(child);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto
+            {
+                AutomationId = "save-secondary",
+                Fields = ["name"],
+            });
+        var node = Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes));
+
+        Assert.True(response.Ok);
+        Assert.Equal("Save As", node.Name);
+        Assert.Equal(0, child.BoundingRectangleCallCount);
+        Assert.Equal(0, child.HelpTextCallCount);
+        Assert.Equal(0, child.ItemTypeCallCount);
+    }
+
     private static SelectorFixture CreateFixture()
     {
         var root = new StubAutomationPeer
@@ -233,7 +651,10 @@ public sealed class SelectorTests
             Name = "Save As",
             ClassName = "ToolbarButton",
             Enabled = true,
+            Offscreen = false,
+            ItemStatus = "currentTab=Contract",
         };
+        saveAs.RegisterProvider<ISelectionItemProvider>(new StubSelectionItemProvider(isSelected: true));
         var cancel = new StubAutomationPeer
         {
             ControlType = AutomationControlType.Button,
@@ -241,6 +662,7 @@ public sealed class SelectorTests
             Name = "Cancel",
             ClassName = "DialogButton",
             Enabled = false,
+            Offscreen = true,
         };
         var search = new StubAutomationPeer
         {
@@ -250,6 +672,7 @@ public sealed class SelectorTests
             ClassName = "SearchBox",
             Enabled = true,
             KeyboardFocus = true,
+            KeyboardFocusable = true,
         };
 
         root.AddChild(dialog);
@@ -270,4 +693,52 @@ public sealed class SelectorTests
         AutomationBridgeSession Session,
         string RootId,
         StubAutomationPeer Toolbar);
+
+    private sealed class StubSelectionItemProvider : ISelectionItemProvider
+    {
+        public StubSelectionItemProvider(bool isSelected)
+        {
+            IsSelected = isSelected;
+        }
+
+        public bool IsSelected { get; }
+        public ISelectionProvider? SelectionContainer => null;
+        public void AddToSelection() { }
+        public void RemoveFromSelection() { }
+        public void Select() { }
+    }
+
+    private sealed class ThrowingSelectionItemProvider : ISelectionItemProvider
+    {
+        public bool IsSelected => throw new InvalidOperationException("selected exploded");
+        public ISelectionProvider? SelectionContainer => null;
+        public void AddToSelection() { }
+        public void RemoveFromSelection() { }
+        public void Select() { }
+    }
+
+    private sealed class StubScrollProvider : IScrollProvider
+    {
+        public bool HorizontallyScrollable => true;
+        public double HorizontalScrollPercent => 0;
+        public double HorizontalViewSize => 100;
+        public bool VerticallyScrollable => true;
+        public double VerticalScrollPercent => 0;
+        public double VerticalViewSize => 100;
+        public void Scroll(ScrollAmount horizontalAmount, ScrollAmount verticalAmount) { }
+        public void SetScrollPercent(double horizontalPercent, double verticalPercent) { }
+    }
+
+    private sealed class StubExpandCollapseProvider : IExpandCollapseProvider
+    {
+        public StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState state)
+        {
+            ExpandCollapseState = state;
+        }
+
+        public Avalonia.Automation.ExpandCollapseState ExpandCollapseState { get; }
+        public bool ShowsMenu => false;
+        public void Expand() { }
+        public void Collapse() { }
+    }
 }
