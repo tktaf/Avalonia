@@ -37,6 +37,8 @@ public static class AutomationActionDispatcher
 
             var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
             var startingRevision = deltaBuilder.CurrentRevision;
+            deltaBuilder.BeginActionCapture(startingRevision);
+
             var response = request.Action switch
             {
                 BridgeAction.Invoke => Invoke(peer, request),
@@ -53,7 +55,10 @@ public static class AutomationActionDispatcher
             };
 
             if (!response.Ok)
+            {
+                deltaBuilder.EndActionCapture();
                 return response;
+            }
 
             var delta = deltaBuilder.CompleteAction(peer, startingRevision);
             var completionState = delta.Revision == startingRevision
@@ -64,6 +69,8 @@ public static class AutomationActionDispatcher
         }
         catch (Exception e)
         {
+            session.GetOrCreateDeltaBuilderForPeer(peer).EndActionCapture();
+
             return BridgeResponse.Failure(
                 BridgeErrorCode.ActionFailed,
                 $"Action '{request.Action}' failed: {e.Message}",

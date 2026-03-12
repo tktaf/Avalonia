@@ -217,6 +217,31 @@ public sealed class ActionDispatchTests
     }
 
     [Fact]
+    public void Dispatch_AggregatesMultipleDeltaEvents_FromOneAction()
+    {
+        var peer = new StubAutomationPeer { Name = "Original" };
+        var provider = new MultiEventRaisingValueProvider(peer);
+        peer.RegisterProvider<IValueProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest
+            {
+                Action = BridgeAction.SetValue,
+                NodeId = fixture.NodeId,
+                Value = "changed",
+            });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Completed, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        var patch = Assert.Single(response.Delta!.Updated);
+        Assert.Equal("Renamed", patch.Name);
+        Assert.Equal("changed", patch.Value);
+    }
+
+    [Fact]
     public void Dispatch_PreservesSuccessfulCompletion_WhenValueGetterThrowsDuringDeltaCapture()
     {
         var peer = new StubAutomationPeer();
@@ -376,6 +401,27 @@ public sealed class ActionDispatchTests
 
         public void SetValue(string? value)
             => _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
+    }
+
+    private sealed class MultiEventRaisingValueProvider : IValueProvider
+    {
+        private readonly StubAutomationPeer _peer;
+
+        public MultiEventRaisingValueProvider(StubAutomationPeer peer)
+        {
+            _peer = peer;
+        }
+
+        public bool IsReadOnly => false;
+        public string? Value { get; private set; }
+
+        public void SetValue(string? value)
+        {
+            _peer.Name = "Renamed";
+            _peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, "Original", "Renamed");
+            Value = value;
+            _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
+        }
     }
 
     private sealed class StubToggleProvider : IToggleProvider

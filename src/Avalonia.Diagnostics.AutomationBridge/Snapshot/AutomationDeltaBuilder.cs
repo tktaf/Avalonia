@@ -18,6 +18,11 @@ internal sealed class AutomationDeltaBuilder : IDisposable
     private readonly AutomationPeer _rootPeer;
     private readonly IRootProvider? _rootProvider;
     private readonly HashSet<AutomationPeer> _knownPeers = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<string, NodePatchDto>? _capturedUpdated;
+    private List<string>? _capturedAdded;
+    private List<string>? _capturedRemoved;
+    private string? _capturedFocus;
+    private long? _capturedStartingRevision;
     private DeltaDto _lastDelta;
     private long _revision;
 
@@ -41,12 +46,52 @@ internal sealed class AutomationDeltaBuilder : IDisposable
 
     public long CurrentRevision => _revision;
 
+    public void BeginActionCapture(long startingRevision)
+    {
+        _capturedStartingRevision = startingRevision;
+        _capturedUpdated = new Dictionary<string, NodePatchDto>(StringComparer.Ordinal);
+        _capturedAdded = [];
+        _capturedRemoved = [];
+        _capturedFocus = null;
+    }
+
     public DeltaDto CompleteAction(AutomationPeer peer, long startingRevision)
     {
-        if (_revision != startingRevision)
-            return _lastDelta;
+        try
+        {
+            if (_revision == startingRevision)
+                return EmptyDelta(startingRevision);
 
-        return EmptyDelta(startingRevision);
+            if (_capturedStartingRevision == startingRevision
+                && _capturedUpdated is not null
+                && _capturedAdded is not null
+                && _capturedRemoved is not null)
+            {
+                return new DeltaDto
+                {
+                    Revision = _revision,
+                    Updated = [.. _capturedUpdated.Values],
+                    Added = [.. _capturedAdded],
+                    Removed = [.. _capturedRemoved],
+                    Focus = _capturedFocus,
+                };
+            }
+
+            return _lastDelta;
+        }
+        finally
+        {
+            EndActionCapture();
+        }
+    }
+
+    public void EndActionCapture()
+    {
+        _capturedStartingRevision = null;
+        _capturedUpdated = null;
+        _capturedAdded = null;
+        _capturedRemoved = null;
+        _capturedFocus = null;
     }
 
     public BridgeResponse GetDelta(long? sinceRevision, string? requestId = null)
@@ -156,7 +201,60 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             Focus = focus,
         };
 
+        CaptureActionDelta(_lastDelta);
+
         return _lastDelta;
+    }
+
+    private void CaptureActionDelta(DeltaDto delta)
+    {
+        if (_capturedStartingRevision is not long startingRevision
+            || delta.Revision <= startingRevision
+            || _capturedUpdated is null
+            || _capturedAdded is null
+            || _capturedRemoved is null)
+        {
+            return;
+        }
+
+        foreach (var patch in delta.Updated)
+        {
+            _capturedUpdated[patch.Id] = _capturedUpdated.TryGetValue(patch.Id, out var existing)
+                ? MergePatch(existing, patch)
+                : patch;
+        }
+
+        MergeHandles(_capturedAdded, _capturedRemoved, delta.Added);
+        MergeHandles(_capturedRemoved, _capturedAdded, delta.Removed);
+
+        if (delta.Focus is not null)
+            _capturedFocus = delta.Focus;
+    }
+
+    private static NodePatchDto MergePatch(NodePatchDto existing, NodePatchDto update)
+        => new()
+        {
+            Id = existing.Id,
+            Enabled = update.Enabled ?? existing.Enabled,
+            Focused = update.Focused ?? existing.Focused,
+            Value = update.Value ?? existing.Value,
+            Offscreen = update.Offscreen ?? existing.Offscreen,
+            Selected = update.Selected ?? existing.Selected,
+            Expanded = update.Expanded ?? existing.Expanded,
+            Checked = update.Checked ?? existing.Checked,
+            Name = update.Name ?? existing.Name,
+            State = update.State ?? existing.State,
+            Metadata = update.Metadata ?? existing.Metadata,
+        };
+
+    private static void MergeHandles(List<string> target, List<string> opposite, IEnumerable<string> handles)
+    {
+        foreach (var handle in handles)
+        {
+            opposite.Remove(handle);
+            if (!target.Exists(existing => string.Equals(existing, handle, StringComparison.Ordinal)))
+                target.Add(handle);
+        }
     }
 
     private NodePatchDto BuildPatch(AutomationPeer peer)
