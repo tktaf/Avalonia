@@ -233,13 +233,16 @@ internal sealed class AutomationDeltaBuilder : IDisposable
 
         foreach (var patch in delta.Updated)
         {
+            if (_capturedRemoved.Contains(patch.Id))
+                continue;
+
             _capturedUpdated[patch.Id] = _capturedUpdated.TryGetValue(patch.Id, out var existing)
                 ? MergePatch(existing, patch)
                 : patch;
         }
 
-        MergeHandles(_capturedAdded, _capturedRemoved, delta.Added);
-        MergeHandles(_capturedRemoved, _capturedAdded, delta.Removed);
+        MergeAddedHandles(_capturedAdded, _capturedRemoved, delta.Added);
+        MergeRemovedHandles(_capturedRemoved, _capturedAdded, _capturedUpdated, delta.Removed);
 
         if (delta.Focus is not null)
             _capturedFocus = delta.Focus;
@@ -340,13 +343,31 @@ internal sealed class AutomationDeltaBuilder : IDisposable
         return ordered.Count == 0 ? [.. cleared] : [.. ordered];
     }
 
-    private static void MergeHandles(List<string> target, List<string> opposite, IEnumerable<string> handles)
+    private static void MergeAddedHandles(List<string> added, List<string> removed, IEnumerable<string> handles)
     {
         foreach (var handle in handles)
         {
-            opposite.Remove(handle);
-            if (!target.Exists(existing => string.Equals(existing, handle, StringComparison.Ordinal)))
-                target.Add(handle);
+            removed.Remove(handle);
+            if (!added.Exists(existing => string.Equals(existing, handle, StringComparison.Ordinal)))
+                added.Add(handle);
+        }
+    }
+
+    private static void MergeRemovedHandles(
+        List<string> removed,
+        List<string> added,
+        Dictionary<string, NodePatchDto> updated,
+        IEnumerable<string> handles)
+    {
+        foreach (var handle in handles)
+        {
+            updated.Remove(handle);
+
+            if (added.Remove(handle))
+                continue;
+
+            if (!removed.Exists(existing => string.Equals(existing, handle, StringComparison.Ordinal)))
+                removed.Add(handle);
         }
     }
 

@@ -121,7 +121,7 @@ public static class AutomationActionDispatcher
     private static BridgeResponse Expand(Avalonia.Automation.Peers.AutomationPeer peer, BridgeRequest request)
     {
         var provider = peer.GetProvider<IExpandCollapseProvider>();
-        if (provider is null)
+        if (provider is null || !Snapshot.AutomationNodeSummaryBuilder.SupportsExpandCollapse(peer))
             return Unsupported(request, "Expand is not supported for this node.");
 
         provider.Expand();
@@ -131,7 +131,7 @@ public static class AutomationActionDispatcher
     private static BridgeResponse Collapse(Avalonia.Automation.Peers.AutomationPeer peer, BridgeRequest request)
     {
         var provider = peer.GetProvider<IExpandCollapseProvider>();
-        if (provider is null)
+        if (provider is null || !Snapshot.AutomationNodeSummaryBuilder.SupportsExpandCollapse(peer))
             return Unsupported(request, "Collapse is not supported for this node.");
 
         provider.Collapse();

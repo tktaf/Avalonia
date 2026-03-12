@@ -156,7 +156,7 @@ public static class AutomationNodeSummaryBuilder
         if (TryGetProvider<ISelectionItemProvider>(peer) is not null)
             actions.Add(BridgeAction.Select);
 
-        if (TryGetProvider<IExpandCollapseProvider>(peer) is not null)
+        if (SupportsExpandCollapse(peer))
         {
             actions.Add(BridgeAction.Expand);
             actions.Add(BridgeAction.Collapse);
@@ -215,16 +215,31 @@ public static class AutomationNodeSummaryBuilder
     {
         try
         {
-            var provider = TryGetProvider<IExpandCollapseProvider>(peer);
-            return provider?.ExpandCollapseState switch
+            return GetExpandCollapseState(peer) switch
             {
                 null => null,
                 Automation.ExpandCollapseState.Expanded => true,
                 Automation.ExpandCollapseState.PartiallyExpanded => true,
                 Automation.ExpandCollapseState.Collapsed => false,
-                Automation.ExpandCollapseState.LeafNode => false,
+                Automation.ExpandCollapseState.LeafNode => null,
                 _ => null,
             };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    internal static bool SupportsExpandCollapse(AutomationPeer peer)
+        => GetExpandCollapseState(peer) is { } state
+           && state != Automation.ExpandCollapseState.LeafNode;
+
+    private static Automation.ExpandCollapseState? GetExpandCollapseState(AutomationPeer peer)
+    {
+        try
+        {
+            return TryGetProvider<IExpandCollapseProvider>(peer)?.ExpandCollapseState;
         }
         catch
         {

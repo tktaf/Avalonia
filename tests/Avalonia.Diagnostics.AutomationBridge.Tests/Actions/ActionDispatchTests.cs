@@ -111,6 +111,26 @@ public sealed class ActionDispatchTests
         Assert.Equal(1, provider.CollapseCallCount);
     }
 
+    [Theory]
+    [InlineData(BridgeAction.Expand)]
+    [InlineData(BridgeAction.Collapse)]
+    public void Dispatch_ReturnsActionNotSupported_ForLeafNodeExpandCollapse(string action)
+    {
+        var peer = new StubAutomationPeer();
+        var provider = new StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState.LeafNode);
+        peer.RegisterProvider<IExpandCollapseProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest { Action = action, NodeId = fixture.NodeId });
+
+        Assert.False(response.Ok);
+        Assert.Equal(BridgeErrorCode.ActionNotSupported, response.Error!.Code);
+        Assert.Equal(0, provider.ExpandCallCount);
+        Assert.Equal(0, provider.CollapseCallCount);
+    }
+
     [Fact]
     public void Dispatch_SetsKeyboardFocus()
     {
@@ -511,7 +531,13 @@ public sealed class ActionDispatchTests
 
     private sealed class StubExpandCollapseProvider : IExpandCollapseProvider
     {
-        public Avalonia.Automation.ExpandCollapseState ExpandCollapseState => Avalonia.Automation.ExpandCollapseState.Collapsed;
+        public StubExpandCollapseProvider(
+            Avalonia.Automation.ExpandCollapseState expandCollapseState = Avalonia.Automation.ExpandCollapseState.Collapsed)
+        {
+            ExpandCollapseState = expandCollapseState;
+        }
+
+        public Avalonia.Automation.ExpandCollapseState ExpandCollapseState { get; }
         public bool ShowsMenu => false;
         public int ExpandCallCount { get; private set; }
         public int CollapseCallCount { get; private set; }

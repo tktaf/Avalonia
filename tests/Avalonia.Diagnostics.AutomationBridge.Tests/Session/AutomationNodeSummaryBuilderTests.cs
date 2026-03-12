@@ -375,6 +375,21 @@ public sealed class AutomationNodeSummaryBuilderTests
     }
 
     [Fact]
+    public void Build_DoesNotAdvertiseExpandCollapseActions_ForLeafNode()
+    {
+        var peer = new StubAutomationPeer();
+        peer.RegisterProvider<IExpandCollapseProvider>(
+            new StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState.LeafNode));
+
+        var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
+
+        Assert.NotNull(dto.Actions);
+        Assert.DoesNotContain(BridgeAction.Expand, dto.Actions!);
+        Assert.DoesNotContain(BridgeAction.Collapse, dto.Actions!);
+        Assert.Null(dto.Expanded);
+    }
+
+    [Fact]
     public void Build_IncludesSetFocusAction_WhenKeyboardFocusable()
     {
         var peer = new StubAutomationPeer { KeyboardFocusable = true };

@@ -320,6 +320,45 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_DoesNotMatchLeafNode_ByExpandAction()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var expander = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Expander,
+            Name = "Details",
+        };
+        expander.RegisterProvider<IExpandCollapseProvider>(
+            new StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState.Collapsed));
+        var leaf = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.TreeItem,
+            Name = "Leaf",
+        };
+        leaf.RegisterProvider<IExpandCollapseProvider>(
+            new StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState.LeafNode));
+        root.AddChild(expander);
+        root.AddChild(leaf);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto { HasAction = BridgeAction.Expand });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Details", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_RestrictsMatches_WithWithinHandle()
     {
         var fixture = CreateFixture();
@@ -613,5 +652,18 @@ public sealed class SelectorTests
         public double VerticalViewSize => 100;
         public void Scroll(ScrollAmount horizontalAmount, ScrollAmount verticalAmount) { }
         public void SetScrollPercent(double horizontalPercent, double verticalPercent) { }
+    }
+
+    private sealed class StubExpandCollapseProvider : IExpandCollapseProvider
+    {
+        public StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState state)
+        {
+            ExpandCollapseState = state;
+        }
+
+        public Avalonia.Automation.ExpandCollapseState ExpandCollapseState { get; }
+        public bool ShowsMenu => false;
+        public void Expand() { }
+        public void Collapse() { }
     }
 }

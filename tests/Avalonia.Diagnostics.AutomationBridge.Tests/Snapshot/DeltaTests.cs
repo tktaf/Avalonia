@@ -176,6 +176,34 @@ public sealed class DeltaTests
     }
 
     [Fact]
+    public void CompleteAction_DropsTransientNodeEntries_WhenNodeIsRemovedBeforeReturn()
+    {
+        var root = new StubRootAutomationPeer { ControlType = AutomationControlType.Window };
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots()[0].Id;
+        var builder = session.GetOrCreateDeltaBuilder(rootId);
+        var startingRevision = builder.CurrentRevision;
+
+        builder.BeginActionCapture(startingRevision);
+
+        var transient = new StubAutomationPeer { Name = "Transient" };
+        root.AddChild(transient);
+        root.RaiseChildrenChanged();
+        var transientHandle = session.GetOrAssignHandle(transient);
+        transient.Name = "Transient Updated";
+        transient.RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, "Transient", "Transient Updated");
+        transient.SetParent(null);
+        root.RemoveChild(transient);
+        root.RaiseChildrenChanged();
+
+        var delta = builder.CompleteAction(root, startingRevision);
+
+        Assert.Empty(delta.Updated);
+        Assert.DoesNotContain(transientHandle, delta.Added);
+        Assert.DoesNotContain(transientHandle, delta.Removed);
+    }
+
+    [Fact]
     public void StaleRevisions_ReturnStaleRevisionError()
     {
         var root = new StubRootAutomationPeer { ControlType = AutomationControlType.Window };
