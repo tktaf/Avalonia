@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(AvsCurrentTargetFramework)</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Dev-only bridge assembly: not shipped as a NuGet package -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Avalonia.AutomationBridge.Protocol\Avalonia.AutomationBridge.Protocol.csproj" />
+    <!-- AppBuilder lives in Avalonia.Controls; we reference it only to hang the extension method -->
+    <ProjectReference Include="..\Avalonia.Controls\Avalonia.Controls.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Label="InternalsVisibleTo">
+    <InternalsVisibleTo Include="Avalonia.Diagnostics.AutomationBridge.Tests, PublicKey=$(AvaloniaPublicKey)" />
+  </ItemGroup>
+</Project>
