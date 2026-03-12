@@ -228,6 +228,32 @@ public sealed class AutomationBridgeCliTests
     }
 
     [Fact]
+    public async Task WaitForCommand_PreservesNonRetryableBridgeErrors()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        root.AddChild(new StubAutomationPeer { Name = "Save", AutomationId = "save-primary" });
+        root.AddChild(new StubAutomationPeer { Name = "Save", AutomationId = "save-secondary" });
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "wait-for", "--root-id", rootId, "--text", "Save", "--timeout-ms", "2000", "--interval-ms", "50"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.False(response.Ok);
+        Assert.Equal(BridgeErrorCode.SelectorAmbiguous, response.Error!.Code);
+    }
+
+    [Fact]
     public async Task PrettyOutput_PrintsCompactHumanReadableNodeSummary()
     {
         var root = new StubRootAutomationPeer

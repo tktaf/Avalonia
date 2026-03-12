@@ -110,14 +110,17 @@ public static class AutomationSelectorEvaluator
     {
         var automationId = selector.AutomationId ?? selector.Id;
         if (automationId is not null
-            && !string.Equals(peer.GetAutomationId(), automationId, StringComparison.Ordinal))
+            && !string.Equals(TryGetString(peer.GetAutomationId), automationId, StringComparison.Ordinal))
         {
             return false;
         }
 
         if (selector.Name is not null)
         {
-            var peerName = peer.GetName();
+            var peerName = TryGetString(peer.GetName);
+            if (peerName is null)
+                return false;
+
             if (selector.NameSubstring)
             {
                 if (!peerName.Contains(selector.Name, StringComparison.OrdinalIgnoreCase))
@@ -139,17 +142,19 @@ public static class AutomationSelectorEvaluator
         }
 
         if (selector.ClassName is not null
-            && !string.Equals(peer.GetClassName(), selector.ClassName, StringComparison.Ordinal))
+            && !string.Equals(TryGetString(peer.GetClassName), selector.ClassName, StringComparison.Ordinal))
         {
             return false;
         }
 
-        if (selector.Focused is bool focused && peer.HasKeyboardFocus() != focused)
+        if (selector.Focused is bool focused
+            && TryGetBool(peer.HasKeyboardFocus) != focused)
         {
             return false;
         }
 
-        if (selector.Enabled is bool enabled && peer.IsEnabled() != enabled)
+        if (selector.Enabled is bool enabled
+            && TryGetBool(peer.IsEnabled) != enabled)
         {
             return false;
         }
@@ -161,7 +166,7 @@ public static class AutomationSelectorEvaluator
         }
 
         if (selector.Visible is bool visible
-            && peer.IsOffscreen() == visible)
+            && TryGetBool(peer.IsOffscreen) != !visible)
         {
             return false;
         }
@@ -211,9 +216,33 @@ public static class AutomationSelectorEvaluator
 
     private static bool MatchesPathSegment(AutomationPeer peer, string segment)
     {
-        return peer.GetName().Contains(segment, StringComparison.OrdinalIgnoreCase)
+        return (TryGetString(peer.GetName)?.Contains(segment, StringComparison.OrdinalIgnoreCase) ?? false)
             || AutomationNodeSummaryBuilder.GetRole(peer)
                 .Contains(segment, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? TryGetString(Func<string?> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool? TryGetBool(Func<bool> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static bool IsDescendantOrSelf(AutomationPeer root, AutomationPeer peer)

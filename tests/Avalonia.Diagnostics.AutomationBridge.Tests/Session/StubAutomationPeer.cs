@@ -32,6 +32,7 @@ internal class StubAutomationPeer : AutomationPeer
     public Exception? AutomationIdException { get; set; }
     public Exception? NameException { get; set; }
     public Exception? ClassNameException { get; set; }
+    public Exception? EnabledException { get; set; }
     public Exception? BoundingRectangleException { get; set; }
     public int SetFocusCallCount { get; private set; }
 
@@ -110,7 +111,13 @@ internal class StubAutomationPeer : AutomationPeer
     protected override bool HasKeyboardFocusCore() => KeyboardFocus;
     protected override bool IsContentElementCore() => true;
     protected override bool IsControlElementCore() => true;
-    protected override bool IsEnabledCore() => Enabled;
+    protected override bool IsEnabledCore()
+    {
+        if (EnabledException is not null)
+            throw EnabledException;
+
+        return Enabled;
+    }
     protected override bool IsKeyboardFocusableCore() => KeyboardFocusable;
     protected override bool IsOffscreenCore() => Offscreen;
     protected override void SetFocusCore() => SetFocusCallCount++;

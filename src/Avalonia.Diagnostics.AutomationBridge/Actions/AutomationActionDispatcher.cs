@@ -25,19 +25,18 @@ public static class AutomationActionDispatcher
                 request.RequestId);
         }
 
-        if (!peer.IsEnabled())
-        {
-            return BridgeResponse.Failure(
-                BridgeErrorCode.ElementNotEnabled,
-                $"Node '{request.NodeId}' is disabled.",
-                request.RequestId);
-        }
-
-        var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
-        var startingRevision = deltaBuilder.CurrentRevision;
-
         try
         {
+            if (!peer.IsEnabled())
+            {
+                return BridgeResponse.Failure(
+                    BridgeErrorCode.ElementNotEnabled,
+                    $"Node '{request.NodeId}' is disabled.",
+                    request.RequestId);
+            }
+
+            var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
+            var startingRevision = deltaBuilder.CurrentRevision;
             var response = request.Action switch
             {
                 BridgeAction.Invoke => Invoke(peer, request),

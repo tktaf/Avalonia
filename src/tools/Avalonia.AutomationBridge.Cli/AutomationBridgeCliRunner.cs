@@ -195,6 +195,9 @@ public static class AutomationBridgeCliRunner
             if (response.Ok)
                 return response;
 
+            if (!string.Equals(response.Error?.Code, BridgeErrorCode.NodeNotFound, StringComparison.Ordinal))
+                return response;
+
             if (DateTime.UtcNow >= deadline)
             {
                 return BridgeResponse.Failure(

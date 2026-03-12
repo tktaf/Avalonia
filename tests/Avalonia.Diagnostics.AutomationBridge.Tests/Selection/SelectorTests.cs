@@ -73,6 +73,30 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_SkipsPeers_WithThrowingSelectorGetters()
+    {
+        var fixture = CreateFixture();
+        var broken = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            NameException = new InvalidOperationException("name exploded"),
+            AutomationIdException = new InvalidOperationException("id exploded"),
+            ClassNameException = new InvalidOperationException("class exploded"),
+        };
+        fixture.Toolbar.AddChild(broken);
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { AutomationId = "save-secondary" });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_FindsNode_ByRole()
     {
         var fixture = CreateFixture();

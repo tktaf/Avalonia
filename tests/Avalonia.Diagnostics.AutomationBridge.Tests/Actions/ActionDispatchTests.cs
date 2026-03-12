@@ -264,6 +264,26 @@ public sealed class ActionDispatchTests
         Assert.Contains("select", response.Error.Message!, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Dispatch_ReturnsStructuredError_WhenEnabledCheckThrows()
+    {
+        var peer = new StubAutomationPeer
+        {
+            EnabledException = new InvalidOperationException("enabled exploded"),
+        };
+        peer.RegisterProvider<IInvokeProvider>(new StubInvokeProvider());
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest { Action = BridgeAction.Invoke, NodeId = fixture.NodeId, RequestId = "invoke-enabled-throw" });
+
+        Assert.False(response.Ok);
+        Assert.Equal("invoke-enabled-throw", response.RequestId);
+        Assert.Equal(BridgeErrorCode.ActionFailed, response.Error!.Code);
+        Assert.Contains("invoke", response.Error.Message!, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ActionFixture CreateFixture(StubAutomationPeer node)
     {
         var root = new StubAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
