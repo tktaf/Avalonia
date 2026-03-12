@@ -163,6 +163,12 @@ public static class AutomationNodeSummaryBuilder
         if (TryGetBool(peer.IsKeyboardFocusable))
             actions.Add(BridgeAction.SetFocus);
 
+        if (TryGetProvider<IScrollProvider>(peer) is not null)
+        {
+            actions.Add(BridgeAction.Scroll);
+            actions.Add(BridgeAction.SetScrollPercent);
+        }
+
         return actions.ToArray();
     }
 

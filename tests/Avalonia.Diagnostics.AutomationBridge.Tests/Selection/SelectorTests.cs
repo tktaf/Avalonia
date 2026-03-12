@@ -275,6 +275,36 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_FindsNode_ByScrollAction()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var timeline = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Pane,
+            Name = "Timeline",
+        };
+        timeline.RegisterProvider<IScrollProvider>(new StubScrollProvider());
+        root.AddChild(timeline);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto { HasAction = BridgeAction.SetScrollPercent });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Timeline", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_RestrictsMatches_WithWithinHandle()
     {
         var fixture = CreateFixture();
@@ -555,5 +585,17 @@ public sealed class SelectorTests
         public void AddToSelection() { }
         public void RemoveFromSelection() { }
         public void Select() { }
+    }
+
+    private sealed class StubScrollProvider : IScrollProvider
+    {
+        public bool HorizontallyScrollable => true;
+        public double HorizontalScrollPercent => 0;
+        public double HorizontalViewSize => 100;
+        public bool VerticallyScrollable => true;
+        public double VerticalScrollPercent => 0;
+        public double VerticalViewSize => 100;
+        public void Scroll(ScrollAmount horizontalAmount, ScrollAmount verticalAmount) { }
+        public void SetScrollPercent(double horizontalPercent, double verticalPercent) { }
     }
 }

@@ -384,6 +384,19 @@ public sealed class AutomationNodeSummaryBuilderTests
     }
 
     [Fact]
+    public void Build_IncludesScrollActions_WhenScrollProviderPresent()
+    {
+        var peer = new StubAutomationPeer();
+        peer.RegisterProvider<IScrollProvider>(new StubScrollProvider());
+
+        var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
+
+        Assert.NotNull(dto.Actions);
+        Assert.Contains(BridgeAction.Scroll, dto.Actions!);
+        Assert.Contains(BridgeAction.SetScrollPercent, dto.Actions!);
+    }
+
+    [Fact]
     public void Build_ActionsIsEmpty_WhenNoProvidersPresent()
     {
         var peer = new StubAutomationPeer();
@@ -477,5 +490,17 @@ public sealed class AutomationNodeSummaryBuilderTests
     {
         public ToggleState ToggleState => throw new InvalidOperationException("toggle exploded");
         public void Toggle() { }
+    }
+
+    private sealed class StubScrollProvider : IScrollProvider
+    {
+        public bool HorizontallyScrollable => true;
+        public double HorizontalScrollPercent => 0;
+        public double HorizontalViewSize => 100;
+        public bool VerticallyScrollable => true;
+        public double VerticalScrollPercent => 0;
+        public double VerticalViewSize => 100;
+        public void Scroll(ScrollAmount horizontalAmount, ScrollAmount verticalAmount) { }
+        public void SetScrollPercent(double horizontalPercent, double verticalPercent) { }
     }
 }
