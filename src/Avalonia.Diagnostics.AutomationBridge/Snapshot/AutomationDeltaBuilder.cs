@@ -419,6 +419,18 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             };
         }
 
+        if (property == AutomationElementIdentifiers.HelpTextProperty
+            || property == AutomationElementIdentifiers.ItemTypeProperty)
+        {
+            var (_, metadata) = AutomationNodeSummaryBuilder.BuildNameAndMetadataForPatch(peer);
+            return new NodePatchDto
+            {
+                Id = id,
+                Metadata = metadata,
+                Cleared = BuildClearedFields((NodePatchField.Metadata, metadata is null)),
+            };
+        }
+
         if (property == ValuePatternIdentifiers.ValueProperty)
         {
             var value = AutomationNodeSummaryBuilder.TryGetValue(peer);

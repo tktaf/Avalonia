@@ -128,6 +128,51 @@ public sealed class DeltaTests
     }
 
     [Fact]
+    public void PropertyChanged_ItemType_EmitsMetadataPatch()
+    {
+        var root = new StubRootAutomationPeer { ControlType = AutomationControlType.Window };
+        var child = new StubAutomationPeer { Name = "Stateful", ItemType = "wizard-step" };
+        root.AddChild(child);
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots()[0].Id;
+        var builder = session.GetOrCreateDeltaBuilder(rootId);
+
+        child.ItemType = "wizard-step-card";
+        child.RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemTypeProperty, "wizard-step", "wizard-step-card");
+
+        var response = builder.GetDelta(0);
+        var delta = Assert.IsType<DeltaDto>(response.Delta);
+        var patch = Assert.Single(delta.Updated);
+
+        Assert.NotNull(patch.Metadata);
+        Assert.Equal("wizard-step-card", patch.Metadata!["itemType"]);
+        Assert.Null(patch.Name);
+    }
+
+    [Fact]
+    public void PropertyChanged_HelpTextClear_EmitsMetadataClearPatch()
+    {
+        var root = new StubRootAutomationPeer { ControlType = AutomationControlType.Window };
+        var child = new StubAutomationPeer { Name = "Stateful", HelpText = "Open the details panel" };
+        root.AddChild(child);
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots()[0].Id;
+        var builder = session.GetOrCreateDeltaBuilder(rootId);
+
+        child.HelpText = null;
+        child.RaisePropertyChangedEvent(AutomationElementIdentifiers.HelpTextProperty, "Open the details panel", null);
+
+        var response = builder.GetDelta(0);
+        var delta = Assert.IsType<DeltaDto>(response.Delta);
+        var patch = Assert.Single(delta.Updated);
+        var cleared = Assert.IsType<string[]>(patch.Cleared);
+
+        Assert.Null(patch.Metadata);
+        Assert.Equal([NodePatchField.Metadata], cleared);
+        Assert.Null(patch.Name);
+    }
+
+    [Fact]
     public void FocusChanged_UpdatesFocusHandleWithoutUnrelatedData()
     {
         var root = new StubRootAutomationPeer { ControlType = AutomationControlType.Window };

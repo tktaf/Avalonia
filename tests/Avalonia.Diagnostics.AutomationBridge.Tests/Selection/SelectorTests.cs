@@ -1,3 +1,4 @@
+using Avalonia;
 using System.Linq;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
@@ -574,6 +575,45 @@ public sealed class SelectorTests
         Assert.Null(node.Actions);
         Assert.NotNull(node.RootId);
         Assert.NotNull(node.Role);
+    }
+
+    [Fact]
+    public void Evaluate_ProjectsRequestedFields_WithoutTouchingOmittedSummaryGetters()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var child = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            AutomationId = "save-secondary",
+            Name = "Save As",
+            BoundingRectangle = new Rect(10, 20, 30, 40),
+            HelpText = "Open the save dialog",
+            ItemType = "toolbar-action",
+        };
+        root.AddChild(child);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto
+            {
+                AutomationId = "save-secondary",
+                Fields = ["name"],
+            });
+        var node = Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes));
+
+        Assert.True(response.Ok);
+        Assert.Equal("Save As", node.Name);
+        Assert.Equal(0, child.BoundingRectangleCallCount);
+        Assert.Equal(0, child.HelpTextCallCount);
+        Assert.Equal(0, child.ItemTypeCallCount);
     }
 
     private static SelectorFixture CreateFixture()

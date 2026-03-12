@@ -140,13 +140,13 @@ public sealed class AutomationBridgeSession : IDisposable
             : _handleRegistry.GetOrAssignNodeHandle(peer);
     }
 
-    internal NodeSummaryDto SummarizePeer(AutomationPeer peer)
+    internal NodeSummaryDto SummarizePeer(AutomationPeer peer, IReadOnlyCollection<string>? fields = null)
     {
         ThrowIfDisposed();
 
         var handle = GetOrAssignHandle(peer);
         var rootId = ResolveRootId(peer, handle);
-        return AutomationNodeSummaryBuilder.Build(peer, handle, rootId);
+        return AutomationNodeSummaryBuilder.Build(peer, handle, rootId, fields);
     }
 
     internal bool TryGetHandle(AutomationPeer peer, [NotNullWhen(true)] out string? handle)

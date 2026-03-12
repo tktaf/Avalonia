@@ -41,6 +41,7 @@ namespace Avalonia.Win32.Automation
             { AutomationElementIdentifiers.LandmarkTypeProperty, UiaPropertyId.LandmarkType },
             { AutomationElementIdentifiers.HeadingLevelProperty, UiaPropertyId.HeadingLevel },
             { AutomationElementIdentifiers.ItemStatusProperty, UiaPropertyId.ItemStatus },
+            { AutomationElementIdentifiers.ItemTypeProperty, UiaPropertyId.ItemType },
             { ExpandCollapsePatternIdentifiers.ExpandCollapseStateProperty, UiaPropertyId.ExpandCollapseExpandCollapseState },
             { RangeValuePatternIdentifiers.IsReadOnlyProperty, UiaPropertyId.RangeValueIsReadOnly},
             { RangeValuePatternIdentifiers.MaximumProperty, UiaPropertyId.RangeValueMaximum },

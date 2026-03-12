@@ -50,35 +50,77 @@ public static class AutomationNodeSummaryBuilder
     /// The session-local handle of the root that owns this node (e.g. <c>w1</c>).
     /// For root nodes this is the same as <paramref name="handle"/>.
     /// </param>
+    /// <param name="fields">
+    /// Optional response projection fields. When provided, only the requested summary properties are
+    /// materialized; <c>id</c>, <c>rootId</c>, and <c>role</c> are always included.
+    /// </param>
     /// <returns>A compact, protocol-ready summary of the node.</returns>
-    public static NodeSummaryDto Build(AutomationPeer peer, string handle, string rootId)
+    public static NodeSummaryDto Build(
+        AutomationPeer peer,
+        string handle,
+        string rootId,
+        IReadOnlyCollection<string>? fields = null)
     {
-        var bounds = TryGetBounds(peer);
-        var actions = GetActions(peer);
-        var (name, metadata) = BuildNameAndMetadata(
-            TryGetString(peer.GetName),
-            TryGetString(peer.GetItemType),
-            TryGetString(peer.GetHelpText));
+        var requestedFields = fields is { Count: > 0 }
+            ? new HashSet<string>(fields, StringComparer.OrdinalIgnoreCase)
+            : null;
+        var includeAllFields = requestedFields is null;
+        var includeName = includeAllFields || requestedFields!.Contains("name");
+        var includeMetadata = includeAllFields || requestedFields!.Contains("metadata");
+
+        string? name = null;
+        IReadOnlyDictionary<string, string>? metadata = null;
+        if (includeName || includeMetadata)
+        {
+            var rawName = TryGetString(peer.GetName);
+            var itemType = includeMetadata ? TryGetString(peer.GetItemType) : null;
+            var helpText = includeMetadata ? TryGetString(peer.GetHelpText) : null;
+            (name, metadata) = BuildNameAndMetadata(rawName, itemType, helpText);
+        }
 
         return new NodeSummaryDto
         {
             Id = handle,
             RootId = rootId,
             Role = TryGetRole(peer),
-            Name = name,
-            AutomationId = TryGetString(peer.GetAutomationId),
-            ClassName = TryGetString(peer.GetClassName),
-            Enabled = TryGetNullableBool(peer.IsEnabled),
-            Focused = TryGetNullableBool(peer.HasKeyboardFocus),
-            Offscreen = TryGetNullableBool(peer.IsOffscreen),
-            Selected = GetSelected(peer),
-            Expanded = GetExpanded(peer),
-            Checked = GetChecked(peer),
-            Value = TryGetValue(peer),
-            Bounds = bounds,
-            Actions = actions,
-            State = GetState(peer),
-            Metadata = metadata,
+            Name = includeName ? name : null,
+            AutomationId = ShouldInclude(requestedFields, includeAllFields, "automationId")
+                ? TryGetString(peer.GetAutomationId)
+                : null,
+            ClassName = ShouldInclude(requestedFields, includeAllFields, "className")
+                ? TryGetString(peer.GetClassName)
+                : null,
+            Enabled = ShouldInclude(requestedFields, includeAllFields, "enabled")
+                ? TryGetNullableBool(peer.IsEnabled)
+                : null,
+            Focused = ShouldInclude(requestedFields, includeAllFields, "focused")
+                ? TryGetNullableBool(peer.HasKeyboardFocus)
+                : null,
+            Offscreen = ShouldInclude(requestedFields, includeAllFields, "offscreen")
+                ? TryGetNullableBool(peer.IsOffscreen)
+                : null,
+            Selected = ShouldInclude(requestedFields, includeAllFields, "selected")
+                ? GetSelected(peer)
+                : null,
+            Expanded = ShouldInclude(requestedFields, includeAllFields, "expanded")
+                ? GetExpanded(peer)
+                : null,
+            Checked = ShouldInclude(requestedFields, includeAllFields, "checked")
+                ? GetChecked(peer)
+                : null,
+            Value = ShouldInclude(requestedFields, includeAllFields, "value")
+                ? TryGetValue(peer)
+                : null,
+            Bounds = ShouldInclude(requestedFields, includeAllFields, "bounds")
+                ? TryGetBounds(peer)
+                : null,
+            Actions = ShouldInclude(requestedFields, includeAllFields, "actions")
+                ? GetActions(peer)
+                : null,
+            State = ShouldInclude(requestedFields, includeAllFields, "state")
+                ? GetState(peer)
+                : null,
+            Metadata = includeMetadata ? metadata : null,
         };
     }
 
@@ -282,6 +324,9 @@ public static class AutomationNodeSummaryBuilder
 
     private static string? NullIfEmpty(string? value)
         => string.IsNullOrEmpty(value) ? null : value;
+
+    private static bool ShouldInclude(HashSet<string>? requestedFields, bool includeAllFields, string field)
+        => includeAllFields || requestedFields!.Contains(field);
 
     private static IReadOnlyDictionary<string, string>? ParseState(string? rawState)
     {

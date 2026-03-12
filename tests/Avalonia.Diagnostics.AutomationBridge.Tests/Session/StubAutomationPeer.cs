@@ -37,6 +37,9 @@ internal class StubAutomationPeer : AutomationPeer
     public Exception? KeyboardFocusException { get; set; }
     public Exception? OffscreenException { get; set; }
     public Exception? BoundingRectangleException { get; set; }
+    public int BoundingRectangleCallCount { get; private set; }
+    public int HelpTextCallCount { get; private set; }
+    public int ItemTypeCallCount { get; private set; }
     public int SetFocusCallCount { get; private set; }
 
     /// <summary>
@@ -92,6 +95,8 @@ internal class StubAutomationPeer : AutomationPeer
 
     protected override Rect GetBoundingRectangleCore()
     {
+        BoundingRectangleCallCount++;
+
         if (BoundingRectangleException is not null)
             throw BoundingRectangleException;
 
@@ -105,8 +110,17 @@ internal class StubAutomationPeer : AutomationPeer
 
         return ClassName;
     }
-    protected override string? GetHelpTextCore() => HelpText;
-    protected override string? GetItemTypeCore() => ItemType;
+    protected override string? GetHelpTextCore()
+    {
+        HelpTextCallCount++;
+        return HelpText;
+    }
+
+    protected override string? GetItemTypeCore()
+    {
+        ItemTypeCallCount++;
+        return ItemType;
+    }
     protected override string? GetItemStatusCore() => ItemStatus;
     protected override AutomationPeer? GetLabeledByCore() => null;
     protected override string? GetNameCore()

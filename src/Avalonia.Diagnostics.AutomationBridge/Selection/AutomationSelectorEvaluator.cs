@@ -67,7 +67,7 @@ public static class AutomationSelectorEvaluator
             }
 
             return BridgeResponse.WithNodes(
-                NodeSummaryProjection.Apply(new[] { session.SummarizePeer(matches[nth]) }, selector.Fields),
+                [session.SummarizePeer(matches[nth], selector.Fields)],
                 requestId);
         }
 
@@ -89,7 +89,7 @@ public static class AutomationSelectorEvaluator
         }
 
         return BridgeResponse.WithNodes(
-            NodeSummaryProjection.Apply(matches.Take(limit).Select(session.SummarizePeer).ToArray(), selector.Fields),
+            matches.Take(limit).Select(peer => session.SummarizePeer(peer, selector.Fields)).ToArray(),
             requestId);
     }
 
