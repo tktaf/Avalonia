@@ -6,11 +6,7 @@ namespace Avalonia.Diagnostics.AutomationBridge.Tests.Protocol;
 
 public sealed class NodeSummarySerializationTests
 {
-    private static readonly JsonSerializerOptions s_options = new()
-    {
-        WriteIndented = false,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-    };
+    private static readonly JsonSerializerOptions s_options = ProtocolTestOptions.Default;
 
     [Fact]
     public void NodeSummaryDto_RoundTrips_AllFields()
@@ -111,5 +107,39 @@ public sealed class NodeSummarySerializationTests
         Assert.False(root.TryGetProperty("className", out _));
         Assert.False(root.TryGetProperty("value", out _));
         Assert.False(root.TryGetProperty("bounds", out _));
+    }
+
+    [Fact]
+    public void NodeSummaryDto_Bounds_RejectsNonFourElementArray()
+    {
+        Assert.Throws<ArgumentException>(() => new NodeSummaryDto
+        {
+            Id = "n1",
+            RootId = "w1",
+            Role = "pane",
+            Enabled = true,
+            Focused = false,
+            Offscreen = false,
+            Actions = [],
+            Bounds = [10, 20, 30] // 3 elements — invalid
+        });
+    }
+
+    [Fact]
+    public void NodeSummaryDto_Bounds_AcceptsNull()
+    {
+        var node = new NodeSummaryDto
+        {
+            Id = "n1",
+            RootId = "w1",
+            Role = "pane",
+            Enabled = true,
+            Focused = false,
+            Offscreen = false,
+            Actions = [],
+            Bounds = null
+        };
+
+        Assert.Null(node.Bounds);
     }
 }

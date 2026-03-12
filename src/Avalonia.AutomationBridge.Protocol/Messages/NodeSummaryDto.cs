@@ -53,7 +53,15 @@ public sealed class NodeSummaryDto
     /// bounds are not available.
     /// </summary>
     [JsonPropertyName("bounds")]
-    public double[]? Bounds { get; init; }
+    public double[]? Bounds
+    {
+        get => _bounds;
+        init => _bounds = value is null || value.Length == 4
+            ? value
+            : throw new ArgumentException("Bounds must be null or exactly [x, y, width, height] (4 elements).", nameof(value));
+    }
+
+    private readonly double[]? _bounds;
 
     /// <summary>Actions the node supports: invoke, setValue, toggle, select, expand, collapse, etc.</summary>
     [JsonPropertyName("actions")]

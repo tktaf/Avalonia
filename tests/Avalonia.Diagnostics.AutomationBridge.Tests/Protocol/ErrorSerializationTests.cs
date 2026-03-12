@@ -6,11 +6,7 @@ namespace Avalonia.Diagnostics.AutomationBridge.Tests.Protocol;
 
 public sealed class ErrorSerializationTests
 {
-    private static readonly JsonSerializerOptions s_options = new()
-    {
-        WriteIndented = false,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-    };
+    private static readonly JsonSerializerOptions s_options = ProtocolTestOptions.Default;
 
     [Theory]
     [InlineData(BridgeErrorCode.BridgeNotEnabled, "bridge_not_enabled")]

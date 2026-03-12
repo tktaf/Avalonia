@@ -6,11 +6,7 @@ namespace Avalonia.Diagnostics.AutomationBridge.Tests.Protocol;
 
 public sealed class SelectorSerializationTests
 {
-    private static readonly JsonSerializerOptions s_options = new()
-    {
-        WriteIndented = false,
-        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-    };
+    private static readonly JsonSerializerOptions s_options = ProtocolTestOptions.Default;
 
     [Fact]
     public void SelectorDto_RoundTrips_AllFields()
@@ -98,5 +94,31 @@ public sealed class SelectorSerializationTests
         Assert.NotNull(restored);
         Assert.Equal("ave", restored.Name);
         Assert.True(restored.NameSubstring);
+    }
+
+    [Fact]
+    public void SelectorDto_NameSubstring_OmittedFromJsonWhenFalse()
+    {
+        var selector = new SelectorDto { Name = "Save", NameSubstring = false };
+
+        var json = JsonSerializer.Serialize(selector, s_options);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.True(root.TryGetProperty("name", out _));
+        Assert.False(root.TryGetProperty("nameSubstring", out _),
+            "nameSubstring must be omitted from JSON when false (default) to avoid token noise.");
+    }
+
+    [Fact]
+    public void SelectorDto_NameSubstring_IncludedInJsonWhenTrue()
+    {
+        var selector = new SelectorDto { Name = "Save", NameSubstring = true };
+
+        var json = JsonSerializer.Serialize(selector, s_options);
+        using var doc = JsonDocument.Parse(json);
+
+        Assert.True(doc.RootElement.TryGetProperty("nameSubstring", out var el));
+        Assert.True(el.GetBoolean());
     }
 }

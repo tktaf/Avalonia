@@ -21,6 +21,7 @@ public sealed class SelectorDto
 
     /// <summary>When true, <see cref="Name"/> is matched as a case-insensitive substring.</summary>
     [JsonPropertyName("nameSubstring")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool NameSubstring { get; init; }
 
     /// <summary>Semantic role filter: button, edit, checkbox, listitem, window, etc.</summary>
