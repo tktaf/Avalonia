@@ -143,25 +143,25 @@ public static class AutomationNodeSummaryBuilder
         var actions = new List<string>();
 
         if (TryGetProvider<IInvokeProvider>(peer) is not null)
-            actions.Add("invoke");
+            actions.Add(BridgeAction.Invoke);
 
         if (SupportsSetValue(TryGetProvider<IValueProvider>(peer)))
-            actions.Add("setValue");
+            actions.Add(BridgeAction.SetValue);
 
         if (TryGetProvider<IToggleProvider>(peer) is not null)
-            actions.Add("toggle");
+            actions.Add(BridgeAction.Toggle);
 
         if (TryGetProvider<ISelectionItemProvider>(peer) is not null)
-            actions.Add("select");
+            actions.Add(BridgeAction.Select);
 
         if (TryGetProvider<IExpandCollapseProvider>(peer) is not null)
         {
-            actions.Add("expand");
-            actions.Add("collapse");
+            actions.Add(BridgeAction.Expand);
+            actions.Add(BridgeAction.Collapse);
         }
 
         if (TryGetBool(peer.IsKeyboardFocusable))
-            actions.Add("setFocus");
+            actions.Add(BridgeAction.SetFocus);
 
         return actions.ToArray();
     }

@@ -260,6 +260,21 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_FindsNode_ByCanonicalBridgeActionName()
+    {
+        var fixture = CreateFixture();
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { HasAction = BridgeAction.SetFocus });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Search", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_RestrictsMatches_WithWithinHandle()
     {
         var fixture = CreateFixture();
@@ -497,6 +512,7 @@ public sealed class SelectorTests
             ClassName = "SearchBox",
             Enabled = true,
             KeyboardFocus = true,
+            KeyboardFocusable = true,
         };
 
         root.AddChild(dialog);

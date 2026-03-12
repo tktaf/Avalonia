@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
+using Avalonia.AutomationBridge.Protocol.Messages;
 using Avalonia.Diagnostics.AutomationBridge.Snapshot;
 using Xunit;
 
@@ -319,7 +320,7 @@ public sealed class AutomationNodeSummaryBuilderTests
         var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
 
         Assert.NotNull(dto.Actions);
-        Assert.Contains("setValue", dto.Actions!);
+        Assert.Contains(BridgeAction.SetValue, dto.Actions!);
     }
 
     [Fact]
@@ -331,7 +332,7 @@ public sealed class AutomationNodeSummaryBuilderTests
         var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
 
         Assert.NotNull(dto.Actions);
-        Assert.DoesNotContain("setValue", dto.Actions!);
+        Assert.DoesNotContain(BridgeAction.SetValue, dto.Actions!);
     }
 
     [Fact]
@@ -379,7 +380,7 @@ public sealed class AutomationNodeSummaryBuilderTests
         var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
 
         Assert.NotNull(dto.Actions);
-        Assert.Contains("setFocus", dto.Actions!);
+        Assert.Contains(BridgeAction.SetFocus, dto.Actions!);
     }
 
     [Fact]

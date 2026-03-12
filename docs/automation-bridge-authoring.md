@@ -170,6 +170,8 @@ Apps that follow these conventions let bridge clients stay precise:
 - filter by `selected`, `enabled`, `visible`, or `hasAction`
 - request only the fields they need
 
+`hasAction` uses the bridge action vocabulary directly, for example `invoke`, `set-value`, `set-focus`, and `show-context-menu`.
+
 That is materially cheaper than broad `role=text` scans over dense screens.
 
 ## Summary
