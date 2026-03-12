@@ -198,7 +198,7 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             return new NodePatchDto
             {
                 Id = id,
-                Value = peer.GetProvider<IValueProvider>()?.Value,
+                Value = AutomationNodeSummaryBuilder.TryGetValue(peer),
             };
         }
 

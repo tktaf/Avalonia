@@ -30,6 +30,7 @@ internal class StubAutomationPeer : AutomationPeer
     public bool Offscreen { get; set; }
     public Rect BoundingRectangle { get; set; }
     public Exception? AutomationIdException { get; set; }
+    public Exception? ControlTypeException { get; set; }
     public Exception? NameException { get; set; }
     public Exception? ClassNameException { get; set; }
     public Exception? EnabledException { get; set; }
@@ -74,7 +75,13 @@ internal class StubAutomationPeer : AutomationPeer
     protected override void BringIntoViewCore() { }
     protected override string? GetAcceleratorKeyCore() => null;
     protected override string? GetAccessKeyCore() => null;
-    protected override AutomationControlType GetAutomationControlTypeCore() => ControlType;
+    protected override AutomationControlType GetAutomationControlTypeCore()
+    {
+        if (ControlTypeException is not null)
+            throw ControlTypeException;
+
+        return ControlType;
+    }
     protected override string? GetAutomationIdCore()
     {
         if (AutomationIdException is not null)

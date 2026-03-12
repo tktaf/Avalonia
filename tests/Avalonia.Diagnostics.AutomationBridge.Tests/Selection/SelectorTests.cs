@@ -135,6 +135,41 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_SkipsPeers_WithThrowingRoleGetter()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var broken = new StubAutomationPeer
+        {
+            Name = "Broken",
+            ControlTypeException = new InvalidOperationException("role exploded"),
+        };
+        var search = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Edit,
+            Name = "Search",
+        };
+        root.AddChild(broken);
+        root.AddChild(search);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto { Role = "edit" });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Search", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_FindsNode_ByClassName()
     {
         var fixture = CreateFixture();
@@ -237,6 +272,60 @@ public sealed class SelectorTests
                 Name = "save",
                 NameSubstring = true,
                 Within = withinHandle,
+            },
+            maxResults: 2);
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
+    public void Evaluate_SkipsPathCandidates_WithThrowingRoleGetter()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var brokenToolbar = new StubAutomationPeer
+        {
+            Name = "Primary Actions",
+            ControlTypeException = new InvalidOperationException("role exploded"),
+        };
+        var brokenSave = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            Name = "Save Draft",
+        };
+        var toolbar = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Group,
+            Name = "Toolbar",
+        };
+        var saveAs = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            Name = "Save As",
+        };
+
+        brokenToolbar.AddChild(brokenSave);
+        toolbar.AddChild(saveAs);
+        root.AddChild(brokenToolbar);
+        root.AddChild(toolbar);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto
+            {
+                Name = "save",
+                NameSubstring = true,
+                Path = ["window", "toolbar"],
             },
             maxResults: 2);
         var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);

@@ -217,6 +217,30 @@ public sealed class ActionDispatchTests
     }
 
     [Fact]
+    public void Dispatch_PreservesSuccessfulCompletion_WhenValueGetterThrowsDuringDeltaCapture()
+    {
+        var peer = new StubAutomationPeer();
+        var provider = new ThrowingGetterRaisingValueProvider(peer);
+        peer.RegisterProvider<IValueProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest
+            {
+                Action = BridgeAction.SetValue,
+                NodeId = fixture.NodeId,
+                Value = "changed",
+            });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Completed, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        Assert.Single(response.Delta!.Updated);
+        Assert.Null(response.Delta.Updated[0].Value);
+    }
+
+    [Fact]
     public void Dispatch_ReturnsActionNotSupported_WhenProviderMissing()
     {
         var fixture = CreateFixture(new StubAutomationPeer());
@@ -335,6 +359,23 @@ public sealed class ActionDispatchTests
             Value = value;
             _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
         }
+    }
+
+    private sealed class ThrowingGetterRaisingValueProvider : IValueProvider
+    {
+        private readonly StubAutomationPeer _peer;
+
+        public ThrowingGetterRaisingValueProvider(StubAutomationPeer peer)
+        {
+            _peer = peer;
+        }
+
+        public bool IsReadOnly => false;
+
+        public string? Value => throw new InvalidOperationException("value exploded");
+
+        public void SetValue(string? value)
+            => _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
     }
 
     private sealed class StubToggleProvider : IToggleProvider

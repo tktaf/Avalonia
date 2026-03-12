@@ -97,7 +97,7 @@ public static class AutomationSelectorEvaluator
     {
         yield return root;
 
-        foreach (var child in root.GetChildren())
+        foreach (var child in TryGetChildren(root))
         {
             foreach (var descendant in EnumerateDepthFirst(child))
             {
@@ -134,7 +134,7 @@ public static class AutomationSelectorEvaluator
 
         if (selector.Role is not null
             && !string.Equals(
-                AutomationNodeSummaryBuilder.GetRole(peer),
+                AutomationNodeSummaryBuilder.TryGetRole(peer),
                 selector.Role,
                 StringComparison.OrdinalIgnoreCase))
         {
@@ -189,7 +189,7 @@ public static class AutomationSelectorEvaluator
     private static bool MatchesPath(AutomationPeer peer, AutomationPeer scopeRoot, IReadOnlyList<string> path)
     {
         var ancestors = new List<AutomationPeer>();
-        var current = peer.GetParent();
+        var current = TryGetParent(peer);
 
         while (current is not null)
         {
@@ -197,7 +197,7 @@ public static class AutomationSelectorEvaluator
             if (ReferenceEquals(current, scopeRoot))
                 break;
 
-            current = current.GetParent();
+            current = TryGetParent(current);
         }
 
         ancestors.Reverse();
@@ -217,8 +217,7 @@ public static class AutomationSelectorEvaluator
     private static bool MatchesPathSegment(AutomationPeer peer, string segment)
     {
         return (TryGetString(peer.GetName)?.Contains(segment, StringComparison.OrdinalIgnoreCase) ?? false)
-            || AutomationNodeSummaryBuilder.GetRole(peer)
-                .Contains(segment, StringComparison.OrdinalIgnoreCase);
+            || (AutomationNodeSummaryBuilder.TryGetRole(peer)?.Contains(segment, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
     private static string? TryGetString(Func<string?> getter)
@@ -254,9 +253,33 @@ public static class AutomationSelectorEvaluator
             if (ReferenceEquals(current, root))
                 return true;
 
-            current = current.GetParent();
+            current = TryGetParent(current);
         }
 
         return false;
+    }
+
+    private static IReadOnlyList<AutomationPeer> TryGetChildren(AutomationPeer peer)
+    {
+        try
+        {
+            return peer.GetChildren();
+        }
+        catch
+        {
+            return Array.Empty<AutomationPeer>();
+        }
+    }
+
+    private static AutomationPeer? TryGetParent(AutomationPeer peer)
+    {
+        try
+        {
+            return peer.GetParent();
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

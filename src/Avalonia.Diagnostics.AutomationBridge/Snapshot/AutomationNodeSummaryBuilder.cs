@@ -288,7 +288,7 @@ public static class AutomationNodeSummaryBuilder
         return true;
     }
 
-    private static string TryGetRole(AutomationPeer peer)
+    internal static string TryGetRole(AutomationPeer peer)
     {
         try
         {
@@ -351,7 +351,7 @@ public static class AutomationNodeSummaryBuilder
         }
     }
 
-    private static string? TryGetValue(AutomationPeer peer)
+    internal static string? TryGetValue(AutomationPeer peer)
     {
         try
         {
