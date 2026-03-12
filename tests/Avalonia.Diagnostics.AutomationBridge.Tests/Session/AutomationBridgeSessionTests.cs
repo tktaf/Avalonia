@@ -7,9 +7,8 @@ namespace Avalonia.Diagnostics.AutomationBridge.Tests.Session;
 
 /// <summary>
 /// Tests for <see cref="AutomationBridgeSession"/>.
-/// Proves per-connection session semantics: root enumeration without tree dumps,
-/// stable handle assignment, clean invalidation of disappearing peers, and liveness
-/// — that <see cref="AutomationBridgeSession.GetRoots"/> reflects the current state of
+/// Proves root enumeration without tree dumps, stable handle assignment, clean invalidation
+/// of disappearing peers, and liveness — that <see cref="AutomationBridgeSession.GetRoots"/> reflects the current state of
 /// its <see cref="ITopLevelPeerSource"/> on every call.
 /// </summary>
 public sealed class AutomationBridgeSessionTests

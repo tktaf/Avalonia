@@ -15,8 +15,7 @@ namespace Avalonia.Diagnostics.AutomationBridge.Tests.Hosting;
 /// <c>builder.AfterSetupCallback(builder)</c> rather than <c>AppBuilder.Setup()</c>.
 /// Full platform initialisation (windowing, rendering, text-shaping subsystems) is not
 /// available in this unit-test environment, making <c>Setup()</c> infeasible without a
-/// heavyweight dependency on Avalonia.Headless and its Skia/HarfBuzz transitive chain —
-/// which is out of scope for this skeletal Task 2 implementation.
+/// heavyweight dependency on Avalonia.Headless and its Skia/HarfBuzz transitive chain.
 /// <c>AfterSetupCallback</c> is the public surface the builder exposes for exactly this
 /// kind of targeted hook testing.
 /// </para>

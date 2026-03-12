@@ -26,7 +26,7 @@ public sealed class AutomationBridgeOptions
     public Action<Hosting.AutomationBridgeHostedService>? OnServiceRegistered { get; set; }
 
     /// <summary>
-    /// Optional root-peer factory used to create per-connection sessions.
+    /// Optional root-peer factory used to create the bridge session's live root source.
     /// When null, the bridge reads live roots from <see cref="Application.ApplicationLifetime"/>.
     /// </summary>
     public Func<IReadOnlyList<AutomationPeer>>? PeerSourceFactory { get; set; }

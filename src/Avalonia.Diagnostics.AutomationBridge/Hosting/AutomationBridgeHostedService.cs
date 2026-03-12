@@ -7,16 +7,16 @@ using Avalonia.Diagnostics.AutomationBridge.Transport;
 namespace Avalonia.Diagnostics.AutomationBridge.Hosting;
 
 /// <summary>
-/// Skeleton hosted service for the dev-only automation bridge.
+/// Hosted service for the dev-only automation bridge.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This service is intentionally minimal: it tracks whether it has been started so that
-/// tests and diagnostics can confirm activation without exposing production behaviour.
+/// The service owns the loopback listener, a shared <see cref="AutomationBridgeSession"/>,
+/// and the JSON request pipeline used by the local CLI.
 /// </para>
 /// <para>
-/// Future tasks will add the actual TCP/WebSocket listener, request dispatch, and
-/// selector/action pipeline inside <see cref="Start"/> / <see cref="Stop"/>.
+/// A single session is shared across client connections so node handles remain valid across
+/// separate CLI invocations while the service stays running.
 /// </para>
 /// </remarks>
 public sealed class AutomationBridgeHostedService : IDisposable
@@ -55,7 +55,6 @@ public sealed class AutomationBridgeHostedService : IDisposable
     /// </summary>
     /// <remarks>
     /// Idempotent and thread-safe: calling <c>Start</c> on an already-running service is a no-op.
-    /// TODO (subsequent tasks): open TCP listener on <see cref="AutomationBridgeOptions.Port"/>.
     /// </remarks>
     public void Start()
     {
@@ -90,7 +89,6 @@ public sealed class AutomationBridgeHostedService : IDisposable
     /// </summary>
     /// <remarks>
     /// Idempotent and thread-safe: calling <c>Stop</c> on an already-stopped service is a no-op.
-    /// TODO (subsequent tasks): close TCP listener and active sessions.
     /// </remarks>
     public void Stop()
     {

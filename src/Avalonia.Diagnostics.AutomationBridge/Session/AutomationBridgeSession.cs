@@ -8,15 +8,15 @@ using Avalonia.Diagnostics.AutomationBridge.Snapshot;
 namespace Avalonia.Diagnostics.AutomationBridge.Session;
 
 /// <summary>
-/// Per-connection session state that ties together the top-level peer source and the
-/// session-local handle registry.
+/// Bridge session state that ties together the top-level peer source and the
+/// handle registry for the lifetime of a running bridge service.
 /// </summary>
 /// <remarks>
 /// <para>
-/// One <see cref="AutomationBridgeSession"/> is created for each client connection.
-/// It owns an <see cref="AutomationHandleRegistry"/> (handle assignment is session-local)
-/// and holds a reference to an <see cref="ITopLevelPeerSource"/> that reflects the live
-/// application window set on each call.
+/// A session owns an <see cref="AutomationHandleRegistry"/> and holds a reference to an
+/// <see cref="ITopLevelPeerSource"/> that reflects the live application window set on each call.
+/// Hosts may keep one session per client or share a single session across local connections,
+/// depending on the desired handle lifetime.
 /// </para>
 /// <para>
 /// Sessions are not thread-safe.  The connection owner must serialise calls or hold an
