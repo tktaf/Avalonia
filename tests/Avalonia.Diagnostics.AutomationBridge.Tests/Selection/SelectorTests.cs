@@ -260,6 +260,21 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_FindsNode_ByPublishedState()
+    {
+        var fixture = CreateFixture();
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { State = new Dictionary<string, string> { ["currentTab"] = "Contract" } });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_FindsNode_ByCanonicalBridgeActionName()
     {
         var fixture = CreateFixture();
@@ -523,6 +538,7 @@ public sealed class SelectorTests
             ClassName = "ToolbarButton",
             Enabled = true,
             Offscreen = false,
+            ItemStatus = "currentTab=Contract",
         };
         saveAs.RegisterProvider<ISelectionItemProvider>(new StubSelectionItemProvider(isSelected: true));
         var cancel = new StubAutomationPeer

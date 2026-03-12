@@ -278,6 +278,44 @@ public sealed class AutomationBridgeCliTests
     }
 
     [Fact]
+    public async Task WaitForCommand_SupportsStructuredStateBagConditions()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        var detail = new StubAutomationPeer
+        {
+            Name = "Profile",
+            AutomationId = "player-profile",
+            ItemStatus = "currentTab=Overview",
+        };
+        root.AddChild(detail);
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        _ = Task.Run(async () =>
+            {
+                await Task.Delay(150, TestContext.Current.CancellationToken);
+                detail.ItemStatus = "currentTab=Contract";
+            },
+            TestContext.Current.CancellationToken);
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "wait-for", "--root-id", rootId, "--automation-id", "player-profile", "--state", "currentTab=Contract", "--timeout-ms", "2000", "--interval-ms", "50"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.True(response.Ok);
+        Assert.Equal("Contract", Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes)).State!["currentTab"]);
+    }
+
+    [Fact]
     public async Task WaitForCommand_PreservesNonRetryableBridgeErrors()
     {
         var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };

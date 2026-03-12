@@ -178,6 +178,13 @@ public static class AutomationSelectorEvaluator
             return false;
         }
 
+        if (selector.State is { Count: > 0 } requiredState)
+        {
+            var publishedState = AutomationNodeSummaryBuilder.GetState(peer);
+            if (publishedState is null || !MatchesState(publishedState, requiredState))
+                return false;
+        }
+
         if (selector.Path is { Length: > 0 } path && !MatchesPath(peer, scopeRoot, path))
         {
             return false;
@@ -257,6 +264,22 @@ public static class AutomationSelectorEvaluator
         }
 
         return false;
+    }
+
+    private static bool MatchesState(
+        IReadOnlyDictionary<string, string> publishedState,
+        IReadOnlyDictionary<string, string> requiredState)
+    {
+        foreach (var pair in requiredState)
+        {
+            if (!publishedState.TryGetValue(pair.Key, out var publishedValue)
+                || !string.Equals(publishedValue, pair.Value, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static IReadOnlyList<AutomationPeer> TryGetChildren(AutomationPeer peer)

@@ -283,6 +283,7 @@ public static class AutomationBridgeCliRunner
             Selected = TryReadNullableBool(args, "--selected") ?? baseSelector?.Selected,
             Visible = TryReadNullableBool(args, "--visible") ?? baseSelector?.Visible,
             HasAction = ReadOption(args, "--has-action", required: false) ?? baseSelector?.HasAction,
+            State = MergeStateFilters(baseSelector?.State, ParseStateFilters(args)),
             Within = ReadOption(args, "--within", required: false) ?? baseSelector?.Within,
             ContainerId = ReadOption(args, "--container-id", required: false) ?? baseSelector?.ContainerId,
             Path = baseSelector?.Path,
@@ -424,7 +425,7 @@ public static class AutomationBridgeCliRunner
              describe --node-id NODE_ID
              query --root-id ROOT_ID [--selector-json JSON] [--automation-id ID] [--text TEXT] [--fields csv]
              inspect (--node-id NODE_ID | --root-id ROOT_ID --automation-id ID)
-             wait-for --root-id ROOT_ID [selector options such as --automation-id ID --text TEXT --selected true] [--timeout-ms N] [--interval-ms N]
+             wait-for --root-id ROOT_ID [selector options such as --automation-id ID --text TEXT --selected true --state currentTab=Contract] [--timeout-ms N] [--interval-ms N]
              invoke|toggle|select|expand|collapse|set-focus|show-context-menu --root-id ROOT_ID --automation-id ID
              set-value --root-id ROOT_ID --automation-id ID --value VALUE
              scroll --root-id ROOT_ID --automation-id ID [--horizontal-amount AMOUNT] [--vertical-amount AMOUNT]
@@ -436,6 +437,7 @@ public static class AutomationBridgeCliRunner
              bridge inspect --root-id w1 --automation-id launch-franchise
              bridge wait-for --root-id w1 --text "Contract Details" --timeout-ms 5000
              bridge wait-for --root-id w1 --automation-id player-profile-contract-tab-button --selected true
+             bridge wait-for --root-id w1 --automation-id player-profile --state currentTab=Contract
            """;
 
     private static CommandOptions Parse(string[] args)
@@ -556,6 +558,48 @@ Command:
             return null;
 
         return csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    }
+
+    private static Dictionary<string, string>? ParseStateFilters(string[] args)
+    {
+        Dictionary<string, string>? filters = null;
+
+        for (var index = 0; index < args.Length; index++)
+        {
+            if (!string.Equals(args[index], "--state", StringComparison.Ordinal))
+                continue;
+
+            if (index + 1 >= args.Length)
+                throw new InvalidOperationException("Missing value for --state.");
+
+            var pair = args[index + 1];
+            var separatorIndex = pair.IndexOf('=');
+            if (separatorIndex <= 0 || separatorIndex == pair.Length - 1)
+                throw new InvalidOperationException($"State filter '{pair}' must be in key=value form.");
+
+            filters ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            filters[pair[..separatorIndex]] = pair[(separatorIndex + 1)..];
+            index++;
+        }
+
+        return filters;
+    }
+
+    private static IReadOnlyDictionary<string, string>? MergeStateFilters(
+        IReadOnlyDictionary<string, string>? baseState,
+        IReadOnlyDictionary<string, string>? overrideState)
+    {
+        if (baseState is null || baseState.Count == 0)
+            return overrideState;
+
+        if (overrideState is null || overrideState.Count == 0)
+            return baseState;
+
+        var merged = new Dictionary<string, string>(baseState, StringComparer.Ordinal);
+        foreach (var pair in overrideState)
+            merged[pair.Key] = pair.Value;
+
+        return merged;
     }
 
     private static NodeSummaryDto? TryGetSingleNode(BridgeResponse response, out BridgeResponse? failure)
