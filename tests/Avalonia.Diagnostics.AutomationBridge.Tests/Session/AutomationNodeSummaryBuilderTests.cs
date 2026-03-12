@@ -101,6 +101,23 @@ public sealed class AutomationNodeSummaryBuilderTests
     }
 
     [Fact]
+    public void Build_SanitizesStructuredObjectNames_WithNestedStructuredValues()
+    {
+        var peer = new StubAutomationPeer
+        {
+            Name = "PlayStyleOptionViewModel { DisplayName = General Manager, Payload = NestedThing { Id = gm, Title = Analyst }, OwnerScope = single_team }",
+        };
+
+        var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
+
+        Assert.Equal("General Manager", dto.Name);
+        Assert.NotNull(dto.Metadata);
+        Assert.Equal("PlayStyleOptionViewModel", dto.Metadata!["sourceType"]);
+        Assert.Equal("NestedThing { Id = gm, Title = Analyst }", dto.Metadata["Payload"]);
+        Assert.Equal("single_team", dto.Metadata["OwnerScope"]);
+    }
+
+    [Fact]
     public void Build_SetsAutomationId_FromPeer()
     {
         var peer = new StubAutomationPeer { AutomationId = "submit-btn" };

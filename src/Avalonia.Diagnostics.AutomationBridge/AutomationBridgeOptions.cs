@@ -1,4 +1,5 @@
 using Avalonia.Automation.Peers;
+using Avalonia.Diagnostics.AutomationBridge.Hosting;
 
 namespace Avalonia.Diagnostics.AutomationBridge;
 
@@ -19,11 +20,10 @@ public sealed class AutomationBridgeOptions
     /// after the hosted-service instance is created (before <c>AfterSetup</c> fires).
     /// </summary>
     /// <remarks>
-    /// Intended for tests and diagnostics that need to capture the service instance without
-    /// creating a circular dependency between the options type and the service type.
+    /// Intended for tests and diagnostics that need to capture the hosted service instance.
     /// Production code rarely needs this hook.
     /// </remarks>
-    public Action<Hosting.IAutomationBridgeHostedService>? OnServiceRegistered { get; set; }
+    public Action<AutomationBridgeHostedService>? OnServiceRegistered { get; set; }
 
     /// <summary>
     /// Optional root-peer factory used to create the bridge session's live root source.

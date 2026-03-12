@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.AutomationBridge.Protocol.Messages;
@@ -24,9 +23,6 @@ namespace Avalonia.Diagnostics.AutomationBridge.Snapshot;
 /// </remarks>
 public static class AutomationNodeSummaryBuilder
 {
-    private static readonly Regex s_structuredNameEntryPattern =
-        new(@"(?:(?<=^)|(?<=, ))(?<key>[A-Za-z_][A-Za-z0-9_]*) = ", RegexOptions.Compiled);
-
     private static readonly string[] s_preferredLabelKeys =
     [
         "DisplayName",
@@ -534,8 +530,7 @@ public static class AutomationNodeSummaryBuilder
 
         var sourceType = rawName[..separatorIndex];
         var body = rawName[(separatorIndex + 3)..^2];
-        var matches = s_structuredNameEntryPattern.Matches(body);
-        if (matches.Count == 0)
+        if (!TrySplitStructuredSegments(body, out var segments))
             return false;
 
         var parsed = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -543,21 +538,121 @@ public static class AutomationNodeSummaryBuilder
             ["sourceType"] = sourceType,
         };
 
-        for (var i = 0; i < matches.Count; i++)
+        foreach (var segment in segments)
         {
-            var match = matches[i];
-            var key = match.Groups["key"].Value;
-            var valueStart = match.Index + match.Length;
-            var valueEnd = i + 1 < matches.Count
-                ? matches[i + 1].Index - 2
-                : body.Length;
-            var value = body[valueStart..valueEnd].Trim();
+            if (!TryParseStructuredSegment(segment, out var key, out var value))
+                return false;
+
             parsed[key] = value;
         }
 
         metadata = parsed;
         return true;
     }
+
+    private static bool TrySplitStructuredSegments(string body, out List<string> segments)
+    {
+        segments = [];
+        var start = 0;
+        var delimiterDepth = 0;
+        var inQuotes = false;
+
+        for (var i = 0; i < body.Length; i++)
+        {
+            var current = body[i];
+
+            if (current == '"' && !IsEscaped(body, i))
+            {
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (inQuotes)
+                continue;
+
+            switch (current)
+            {
+                case '{':
+                case '[':
+                case '(':
+                    delimiterDepth++;
+                    break;
+                case '}':
+                case ']':
+                case ')':
+                    delimiterDepth--;
+                    if (delimiterDepth < 0)
+                        return false;
+                    break;
+                case ',' when delimiterDepth == 0:
+                    segments.Add(body[start..i].Trim());
+                    start = i + 1;
+                    break;
+            }
+        }
+
+        if (inQuotes || delimiterDepth != 0)
+            return false;
+
+        segments.Add(body[start..].Trim());
+        segments.RemoveAll(string.IsNullOrWhiteSpace);
+        return segments.Count > 0;
+    }
+
+    private static bool TryParseStructuredSegment(string segment, out string key, out string value)
+    {
+        key = string.Empty;
+        value = string.Empty;
+
+        var separatorIndex = FindTopLevelEquals(segment);
+        if (separatorIndex <= 0 || separatorIndex >= segment.Length - 1)
+            return false;
+
+        key = segment[..separatorIndex].Trim();
+        value = segment[(separatorIndex + 1)..].Trim();
+        return key.Length > 0 && value.Length > 0;
+    }
+
+    private static int FindTopLevelEquals(string segment)
+    {
+        var delimiterDepth = 0;
+        var inQuotes = false;
+
+        for (var i = 0; i < segment.Length; i++)
+        {
+            var current = segment[i];
+
+            if (current == '"' && !IsEscaped(segment, i))
+            {
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (inQuotes)
+                continue;
+
+            switch (current)
+            {
+                case '{':
+                case '[':
+                case '(':
+                    delimiterDepth++;
+                    break;
+                case '}':
+                case ']':
+                case ')':
+                    delimiterDepth--;
+                    break;
+                case '=' when delimiterDepth == 0:
+                    return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static bool IsEscaped(string value, int index)
+        => index > 0 && value[index - 1] == '\\';
 
     private static string? ChooseDisplayName(IReadOnlyDictionary<string, string> metadata)
     {
