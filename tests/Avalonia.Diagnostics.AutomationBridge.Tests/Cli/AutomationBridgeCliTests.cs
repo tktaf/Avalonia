@@ -91,6 +91,7 @@ public sealed class AutomationBridgeCliTests
         Assert.Contains("Usage:", stdout.ToString(), StringComparison.Ordinal);
         Assert.Contains("wait-for", stdout.ToString(), StringComparison.Ordinal);
         Assert.Contains("inspect", stdout.ToString(), StringComparison.Ordinal);
+        Assert.Contains("--selected", stdout.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -188,6 +189,45 @@ public sealed class AutomationBridgeCliTests
     }
 
     [Fact]
+    public async Task WaitForCommand_SupportsStateConditions()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        var option = new StubAutomationPeer
+        {
+            Name = "The Analyst",
+            AutomationId = "gm-archetype-analyst",
+        };
+        var provider = new MutableSelectionItemProvider();
+        option.RegisterProvider<ISelectionItemProvider>(provider);
+        root.AddChild(option);
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        _ = Task.Run(async () =>
+            {
+                await Task.Delay(150, TestContext.Current.CancellationToken);
+                provider.IsSelected = true;
+            },
+            TestContext.Current.CancellationToken);
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "wait-for", "--root-id", rootId, "--automation-id", "gm-archetype-analyst", "--selected", "true", "--timeout-ms", "2000", "--interval-ms", "50"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.True(response.Ok);
+        Assert.True(Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes)).Selected);
+    }
+
+    [Fact]
     public async Task PrettyOutput_PrintsCompactHumanReadableNodeSummary()
     {
         var root = new StubRootAutomationPeer
@@ -262,6 +302,15 @@ public sealed class AutomationBridgeCliTests
         public void AddToSelection() { }
         public void RemoveFromSelection() { }
         public void Select() { }
+    }
+
+    private sealed class MutableSelectionItemProvider : ISelectionItemProvider
+    {
+        public bool IsSelected { get; set; }
+        public ISelectionProvider? SelectionContainer => null;
+        public void AddToSelection() => IsSelected = true;
+        public void RemoveFromSelection() => IsSelected = false;
+        public void Select() => IsSelected = true;
     }
 
     private sealed class InlineRequestInvoker : IAutomationBridgeRequestInvoker

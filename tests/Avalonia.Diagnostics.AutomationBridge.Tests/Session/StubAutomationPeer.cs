@@ -19,6 +19,8 @@ internal class StubAutomationPeer : AutomationPeer
     // Configurable properties
     public AutomationControlType ControlType { get; set; } = AutomationControlType.Custom;
     public string? AutomationId { get; set; }
+    public string? HelpText { get; set; }
+    public string? ItemType { get; set; }
     public string? Name { get; set; }
     public string? ItemStatus { get; set; }
     public string ClassName { get; set; } = string.Empty;
@@ -93,6 +95,8 @@ internal class StubAutomationPeer : AutomationPeer
 
         return ClassName;
     }
+    protected override string? GetHelpTextCore() => HelpText;
+    protected override string? GetItemTypeCore() => ItemType;
     protected override string? GetItemStatusCore() => ItemStatus;
     protected override AutomationPeer? GetLabeledByCore() => null;
     protected override string? GetNameCore()

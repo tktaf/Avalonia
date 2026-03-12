@@ -184,7 +184,7 @@ internal sealed class AutomationDeltaBuilder : IDisposable
 
         if (property == AutomationElementIdentifiers.NameProperty)
         {
-            var (name, metadata) = AutomationNodeSummaryBuilder.BuildNameAndMetadataForPatch(peer.GetName());
+            var (name, metadata) = AutomationNodeSummaryBuilder.BuildNameAndMetadataForPatch(peer);
             return new NodePatchDto
             {
                 Id = id,

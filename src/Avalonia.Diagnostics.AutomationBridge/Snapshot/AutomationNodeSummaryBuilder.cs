@@ -53,7 +53,10 @@ public static class AutomationNodeSummaryBuilder
     {
         var bounds = TryGetBounds(peer);
         var actions = GetActions(peer);
-        var (name, metadata) = BuildNameAndMetadata(TryGetString(peer.GetName));
+        var (name, metadata) = BuildNameAndMetadata(
+            TryGetString(peer.GetName),
+            TryGetString(peer.GetItemType),
+            TryGetString(peer.GetHelpText));
 
         return new NodeSummaryDto
         {
@@ -199,8 +202,11 @@ public static class AutomationNodeSummaryBuilder
     internal static IReadOnlyDictionary<string, string>? GetState(AutomationPeer peer)
         => ParseState(TryGetString(peer.GetItemStatus));
 
-    internal static (string? Name, IReadOnlyDictionary<string, string>? Metadata) BuildNameAndMetadataForPatch(string? rawName)
-        => BuildNameAndMetadata(rawName);
+    internal static (string? Name, IReadOnlyDictionary<string, string>? Metadata) BuildNameAndMetadataForPatch(AutomationPeer peer)
+        => BuildNameAndMetadata(
+            TryGetString(peer.GetName),
+            TryGetString(peer.GetItemType),
+            TryGetString(peer.GetHelpText));
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -335,15 +341,43 @@ public static class AutomationNodeSummaryBuilder
         }
     }
 
-    private static (string? Name, IReadOnlyDictionary<string, string>? Metadata) BuildNameAndMetadata(string? rawName)
+    private static (string? Name, IReadOnlyDictionary<string, string>? Metadata) BuildNameAndMetadata(
+        string? rawName,
+        string? itemType,
+        string? helpText)
     {
-        if (string.IsNullOrEmpty(rawName))
-            return (null, null);
+        var name = string.IsNullOrEmpty(rawName) ? null : rawName;
+        IReadOnlyDictionary<string, string>? metadata = null;
 
-        if (!TryParseStructuredObjectName(rawName, out var metadata))
-            return (rawName, null);
+        if (!string.IsNullOrEmpty(rawName) && TryParseStructuredObjectName(rawName, out var parsedMetadata))
+        {
+            name = ChooseDisplayName(parsedMetadata!) ?? rawName;
+            metadata = parsedMetadata;
+        }
 
-        return (ChooseDisplayName(metadata!) ?? rawName, metadata);
+        metadata = MergeMetadata(metadata, itemType, helpText);
+        return (name, metadata);
+    }
+
+    private static IReadOnlyDictionary<string, string>? MergeMetadata(
+        IReadOnlyDictionary<string, string>? metadata,
+        string? itemType,
+        string? helpText)
+    {
+        if (metadata is null && itemType is null && helpText is null)
+            return null;
+
+        var merged = metadata is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : new Dictionary<string, string>(metadata, StringComparer.Ordinal);
+
+        if (itemType is not null)
+            merged["itemType"] = itemType;
+
+        if (helpText is not null)
+            merged["helpText"] = helpText;
+
+        return merged;
     }
 
     private static bool TryParseStructuredObjectName(

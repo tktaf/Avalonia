@@ -414,7 +414,7 @@ public static class AutomationBridgeCliRunner
              describe --node-id NODE_ID
              query --root-id ROOT_ID [--selector-json JSON] [--automation-id ID] [--text TEXT] [--fields csv]
              inspect (--node-id NODE_ID | --root-id ROOT_ID --automation-id ID)
-             wait-for --root-id ROOT_ID (--automation-id ID | --text TEXT | --selector-json JSON) [--timeout-ms N] [--interval-ms N]
+             wait-for --root-id ROOT_ID [selector options such as --automation-id ID --text TEXT --selected true] [--timeout-ms N] [--interval-ms N]
              invoke|toggle|select|expand|collapse|set-focus|show-context-menu --root-id ROOT_ID --automation-id ID
              set-value --root-id ROOT_ID --automation-id ID --value VALUE
              scroll --root-id ROOT_ID --automation-id ID [--horizontal-amount AMOUNT] [--vertical-amount AMOUNT]
@@ -425,6 +425,7 @@ public static class AutomationBridgeCliRunner
              bridge query --root-id w1 --automation-id player-profile-contract-tab-button --fields id,name,actions
              bridge inspect --root-id w1 --automation-id launch-franchise
              bridge wait-for --root-id w1 --text "Contract Details" --timeout-ms 5000
+             bridge wait-for --root-id w1 --automation-id player-profile-contract-tab-button --selected true
            """;
 
     private static CommandOptions Parse(string[] args)

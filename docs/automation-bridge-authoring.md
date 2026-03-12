@@ -98,9 +98,9 @@ Useful sources:
 
 Recommended uses:
 
-- item type such as `team-option`, `player-row`, or `transaction-card`
-- item status such as `busy`, `inactive`, `week-4`, or `currentTab=Contract`
-- concise help text for extra context that should not become the primary node label
+- `AutomationProperties.ItemType` becomes metadata such as `itemType=player-row`
+- `AutomationProperties.ItemStatus` becomes bridge `state` such as `busy`, `inactive`, `week-4`, or `currentTab=Contract`
+- `AutomationProperties.HelpText` becomes metadata such as `helpText=Opens the player profile.`
 
 ## Repeated Rows, Cards, and List Items
 

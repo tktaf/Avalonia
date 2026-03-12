@@ -245,6 +245,23 @@ public sealed class AutomationNodeSummaryBuilderTests
         Assert.Equal("Players", dto.State["navigationContext"]);
     }
 
+    [Fact]
+    public void Build_IncludesItemTypeAndHelpTextInMetadata()
+    {
+        var peer = new StubAutomationPeer
+        {
+            Name = "James Brown",
+            ItemType = "player-row",
+            HelpText = "Opens the player profile.",
+        };
+
+        var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
+
+        Assert.NotNull(dto.Metadata);
+        Assert.Equal("player-row", dto.Metadata!["itemType"]);
+        Assert.Equal("Opens the player profile.", dto.Metadata["helpText"]);
+    }
+
     // -------------------------------------------------------------------------
     // Actions
     // -------------------------------------------------------------------------
