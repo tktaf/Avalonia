@@ -262,6 +262,38 @@ public sealed class AutomationNodeSummaryBuilderTests
         Assert.Equal("Opens the player profile.", dto.Metadata["helpText"]);
     }
 
+    [Fact]
+    public void Build_OmitsBoolState_WhenPeerGettersThrow()
+    {
+        var peer = new StubAutomationPeer
+        {
+            EnabledException = new InvalidOperationException("enabled exploded"),
+            KeyboardFocusException = new InvalidOperationException("focus exploded"),
+            OffscreenException = new InvalidOperationException("offscreen exploded"),
+        };
+
+        var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
+
+        Assert.Null(dto.Enabled);
+        Assert.Null(dto.Focused);
+        Assert.Null(dto.Offscreen);
+    }
+
+    [Fact]
+    public void Build_OmitsProviderBackedState_WhenProviderGetterThrows()
+    {
+        var peer = new StubAutomationPeer();
+        peer.RegisterProvider<ISelectionItemProvider>(new ThrowingSelectionItemProvider());
+        peer.RegisterProvider<IExpandCollapseProvider>(new ThrowingExpandCollapseProvider());
+        peer.RegisterProvider<IToggleProvider>(new ThrowingToggleProvider());
+
+        var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
+
+        Assert.Null(dto.Selected);
+        Assert.Null(dto.Expanded);
+        Assert.Null(dto.Checked);
+    }
+
     // -------------------------------------------------------------------------
     // Actions
     // -------------------------------------------------------------------------
@@ -408,6 +440,15 @@ public sealed class AutomationNodeSummaryBuilderTests
         public void Select() { }
     }
 
+    private sealed class ThrowingSelectionItemProvider : ISelectionItemProvider
+    {
+        public bool IsSelected => throw new InvalidOperationException("selected exploded");
+        public ISelectionProvider? SelectionContainer => null;
+        public void AddToSelection() { }
+        public void RemoveFromSelection() { }
+        public void Select() { }
+    }
+
     private sealed class StubExpandCollapseProvider : IExpandCollapseProvider
     {
         public StubExpandCollapseProvider(Avalonia.Automation.ExpandCollapseState expandCollapseState)
@@ -419,5 +460,21 @@ public sealed class AutomationNodeSummaryBuilderTests
         public bool ShowsMenu => false;
         public void Expand() { }
         public void Collapse() { }
+    }
+
+    private sealed class ThrowingExpandCollapseProvider : IExpandCollapseProvider
+    {
+        public Avalonia.Automation.ExpandCollapseState ExpandCollapseState
+            => throw new InvalidOperationException("expand exploded");
+
+        public bool ShowsMenu => false;
+        public void Expand() { }
+        public void Collapse() { }
+    }
+
+    private sealed class ThrowingToggleProvider : IToggleProvider
+    {
+        public ToggleState ToggleState => throw new InvalidOperationException("toggle exploded");
+        public void Toggle() { }
     }
 }

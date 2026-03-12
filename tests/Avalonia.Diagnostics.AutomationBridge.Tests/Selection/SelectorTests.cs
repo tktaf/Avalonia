@@ -97,6 +97,29 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_SkipsPeers_WithThrowingProviderStateGetters()
+    {
+        var fixture = CreateFixture();
+        var broken = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Button,
+            Name = "Broken Save",
+        };
+        broken.RegisterProvider<ISelectionItemProvider>(new ThrowingSelectionItemProvider());
+        fixture.Toolbar.AddChild(broken);
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            fixture.Session,
+            fixture.RootId,
+            new SelectorDto { Selected = true });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Save As", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_FindsNode_ByRole()
     {
         var fixture = CreateFixture();
@@ -414,6 +437,15 @@ public sealed class SelectorTests
         }
 
         public bool IsSelected { get; }
+        public ISelectionProvider? SelectionContainer => null;
+        public void AddToSelection() { }
+        public void RemoveFromSelection() { }
+        public void Select() { }
+    }
+
+    private sealed class ThrowingSelectionItemProvider : ISelectionItemProvider
+    {
+        public bool IsSelected => throw new InvalidOperationException("selected exploded");
         public ISelectionProvider? SelectionContainer => null;
         public void AddToSelection() { }
         public void RemoveFromSelection() { }

@@ -66,9 +66,9 @@ public static class AutomationNodeSummaryBuilder
             Name = name,
             AutomationId = TryGetString(peer.GetAutomationId),
             ClassName = TryGetString(peer.GetClassName),
-            Enabled = TryGetBool(peer.IsEnabled),
-            Focused = TryGetBool(peer.HasKeyboardFocus),
-            Offscreen = TryGetBool(peer.IsOffscreen),
+            Enabled = TryGetNullableBool(peer.IsEnabled),
+            Focused = TryGetNullableBool(peer.HasKeyboardFocus),
+            Offscreen = TryGetNullableBool(peer.IsOffscreen),
             Selected = GetSelected(peer),
             Expanded = GetExpanded(peer),
             Checked = GetChecked(peer),
@@ -145,7 +145,7 @@ public static class AutomationNodeSummaryBuilder
         if (TryGetProvider<IInvokeProvider>(peer) is not null)
             actions.Add("invoke");
 
-        if (TryGetProvider<IValueProvider>(peer) is { IsReadOnly: false })
+        if (SupportsSetValue(TryGetProvider<IValueProvider>(peer)))
             actions.Add("setValue");
 
         if (TryGetProvider<IToggleProvider>(peer) is not null)
@@ -168,35 +168,56 @@ public static class AutomationNodeSummaryBuilder
 
     internal static bool? GetSelected(AutomationPeer peer)
     {
-        var provider = TryGetProvider<ISelectionItemProvider>(peer);
-        return provider?.IsSelected;
+        try
+        {
+            var provider = TryGetProvider<ISelectionItemProvider>(peer);
+            return provider?.IsSelected;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     internal static bool? GetExpanded(AutomationPeer peer)
     {
-        var provider = TryGetProvider<IExpandCollapseProvider>(peer);
-        return provider?.ExpandCollapseState switch
+        try
         {
-            null => null,
-            Automation.ExpandCollapseState.Expanded => true,
-            Automation.ExpandCollapseState.PartiallyExpanded => true,
-            Automation.ExpandCollapseState.Collapsed => false,
-            Automation.ExpandCollapseState.LeafNode => false,
-            _ => null,
-        };
+            var provider = TryGetProvider<IExpandCollapseProvider>(peer);
+            return provider?.ExpandCollapseState switch
+            {
+                null => null,
+                Automation.ExpandCollapseState.Expanded => true,
+                Automation.ExpandCollapseState.PartiallyExpanded => true,
+                Automation.ExpandCollapseState.Collapsed => false,
+                Automation.ExpandCollapseState.LeafNode => false,
+                _ => null,
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     internal static bool? GetChecked(AutomationPeer peer)
     {
-        var provider = TryGetProvider<IToggleProvider>(peer);
-        return provider?.ToggleState switch
+        try
         {
-            null => null,
-            ToggleState.On => true,
-            ToggleState.Off => false,
-            ToggleState.Indeterminate => null,
-            _ => null,
-        };
+            var provider = TryGetProvider<IToggleProvider>(peer);
+            return provider?.ToggleState switch
+            {
+                null => null,
+                ToggleState.On => true,
+                ToggleState.Off => false,
+                ToggleState.Indeterminate => null,
+                _ => null,
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     internal static IReadOnlyDictionary<string, string>? GetState(AutomationPeer peer)
@@ -296,6 +317,33 @@ public static class AutomationNodeSummaryBuilder
         try
         {
             return getter();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool? TryGetNullableBool(Func<bool> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool SupportsSetValue(IValueProvider? provider)
+    {
+        if (provider is null)
+            return false;
+
+        try
+        {
+            return !provider.IsReadOnly;
         }
         catch
         {
