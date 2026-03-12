@@ -106,6 +106,28 @@ public sealed class DeltaTests
     }
 
     [Fact]
+    public void PropertyChanged_ItemStatusClear_EmitsStateClearPatch()
+    {
+        var root = new StubRootAutomationPeer { ControlType = AutomationControlType.Window };
+        var child = new StubAutomationPeer { Name = "Stateful", ItemStatus = "busy; modal=true" };
+        root.AddChild(child);
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots()[0].Id;
+        var builder = session.GetOrCreateDeltaBuilder(rootId);
+
+        child.ItemStatus = null;
+        child.RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemStatusProperty, "busy; modal=true", null);
+
+        var response = builder.GetDelta(0);
+        var delta = Assert.IsType<DeltaDto>(response.Delta);
+        var patch = Assert.Single(delta.Updated);
+        var cleared = Assert.IsType<string[]>(patch.Cleared);
+
+        Assert.Null(patch.State);
+        Assert.Equal([NodePatchField.State], cleared);
+    }
+
+    [Fact]
     public void FocusChanged_UpdatesFocusHandleWithoutUnrelatedData()
     {
         var root = new StubRootAutomationPeer { ControlType = AutomationControlType.Window };

@@ -14,6 +14,20 @@ namespace Avalonia.Diagnostics.AutomationBridge.Snapshot;
 /// </summary>
 internal sealed class AutomationDeltaBuilder : IDisposable
 {
+    private static readonly string[] s_patchFieldOrder =
+    [
+        NodePatchField.Enabled,
+        NodePatchField.Focused,
+        NodePatchField.Value,
+        NodePatchField.Offscreen,
+        NodePatchField.Selected,
+        NodePatchField.Expanded,
+        NodePatchField.Checked,
+        NodePatchField.Name,
+        NodePatchField.State,
+        NodePatchField.Metadata,
+    ];
+
     private readonly AutomationBridgeSession _session;
     private readonly AutomationPeer _rootPeer;
     private readonly IRootProvider? _rootProvider;
@@ -232,20 +246,99 @@ internal sealed class AutomationDeltaBuilder : IDisposable
     }
 
     private static NodePatchDto MergePatch(NodePatchDto existing, NodePatchDto update)
-        => new()
+    {
+        var cleared = new HashSet<string>(StringComparer.Ordinal);
+        MergeCleared(cleared, existing.Cleared);
+
+        return new NodePatchDto
         {
             Id = existing.Id,
-            Enabled = update.Enabled ?? existing.Enabled,
-            Focused = update.Focused ?? existing.Focused,
-            Value = update.Value ?? existing.Value,
-            Offscreen = update.Offscreen ?? existing.Offscreen,
-            Selected = update.Selected ?? existing.Selected,
-            Expanded = update.Expanded ?? existing.Expanded,
-            Checked = update.Checked ?? existing.Checked,
-            Name = update.Name ?? existing.Name,
-            State = update.State ?? existing.State,
-            Metadata = update.Metadata ?? existing.Metadata,
+            Enabled = MergeNullableValue(existing.Enabled, update.Enabled, NodePatchField.Enabled, update.Cleared, cleared),
+            Focused = MergeNullableValue(existing.Focused, update.Focused, NodePatchField.Focused, update.Cleared, cleared),
+            Value = MergeReferenceValue(existing.Value, update.Value, NodePatchField.Value, update.Cleared, cleared),
+            Offscreen = MergeNullableValue(existing.Offscreen, update.Offscreen, NodePatchField.Offscreen, update.Cleared, cleared),
+            Selected = MergeNullableValue(existing.Selected, update.Selected, NodePatchField.Selected, update.Cleared, cleared),
+            Expanded = MergeNullableValue(existing.Expanded, update.Expanded, NodePatchField.Expanded, update.Cleared, cleared),
+            Checked = MergeNullableValue(existing.Checked, update.Checked, NodePatchField.Checked, update.Cleared, cleared),
+            Name = MergeReferenceValue(existing.Name, update.Name, NodePatchField.Name, update.Cleared, cleared),
+            State = MergeReferenceValue(existing.State, update.State, NodePatchField.State, update.Cleared, cleared),
+            Metadata = MergeReferenceValue(existing.Metadata, update.Metadata, NodePatchField.Metadata, update.Cleared, cleared),
+            Cleared = ToClearedArray(cleared),
         };
+    }
+
+    private static bool? MergeNullableValue(
+        bool? existing,
+        bool? update,
+        string field,
+        string[]? updateCleared,
+        HashSet<string> cleared)
+    {
+        if (ContainsField(updateCleared, field))
+        {
+            cleared.Add(field);
+            return null;
+        }
+
+        if (update is not null)
+        {
+            cleared.Remove(field);
+            return update;
+        }
+
+        return cleared.Contains(field) ? null : existing;
+    }
+
+    private static T? MergeReferenceValue<T>(
+        T? existing,
+        T? update,
+        string field,
+        string[]? updateCleared,
+        HashSet<string> cleared)
+        where T : class
+    {
+        if (ContainsField(updateCleared, field))
+        {
+            cleared.Add(field);
+            return null;
+        }
+
+        if (update is not null)
+        {
+            cleared.Remove(field);
+            return update;
+        }
+
+        return cleared.Contains(field) ? null : existing;
+    }
+
+    private static void MergeCleared(HashSet<string> target, string[]? cleared)
+    {
+        if (cleared is null)
+            return;
+
+        foreach (var field in cleared)
+            target.Add(field);
+    }
+
+    private static bool ContainsField(string[]? cleared, string field)
+        => cleared is not null
+           && Array.Exists(cleared, existing => string.Equals(existing, field, StringComparison.Ordinal));
+
+    private static string[]? ToClearedArray(HashSet<string> cleared)
+    {
+        if (cleared.Count == 0)
+            return null;
+
+        var ordered = new List<string>(cleared.Count);
+        foreach (var field in s_patchFieldOrder)
+        {
+            if (cleared.Contains(field))
+                ordered.Add(field);
+        }
+
+        return ordered.Count == 0 ? [.. cleared] : [.. ordered];
+    }
 
     private static void MergeHandles(List<string> target, List<string> opposite, IEnumerable<string> handles)
     {
@@ -273,6 +366,17 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             Value = summary.Value,
             State = summary.State,
             Metadata = summary.Metadata,
+            Cleared = BuildClearedFields(
+                (NodePatchField.Enabled, summary.Enabled is null),
+                (NodePatchField.Focused, summary.Focused is null),
+                (NodePatchField.Value, summary.Value is null),
+                (NodePatchField.Offscreen, summary.Offscreen is null),
+                (NodePatchField.Selected, summary.Selected is null),
+                (NodePatchField.Expanded, summary.Expanded is null),
+                (NodePatchField.Checked, summary.Checked is null),
+                (NodePatchField.Name, summary.Name is null),
+                (NodePatchField.State, summary.State is null),
+                (NodePatchField.Metadata, summary.Metadata is null)),
         };
     }
 
@@ -288,55 +392,87 @@ internal sealed class AutomationDeltaBuilder : IDisposable
                 Id = id,
                 Name = name,
                 Metadata = metadata,
+                Cleared = BuildClearedFields(
+                    (NodePatchField.Name, name is null),
+                    (NodePatchField.Metadata, metadata is null)),
             };
         }
 
         if (property == ValuePatternIdentifiers.ValueProperty)
         {
+            var value = AutomationNodeSummaryBuilder.TryGetValue(peer);
             return new NodePatchDto
             {
                 Id = id,
-                Value = AutomationNodeSummaryBuilder.TryGetValue(peer),
+                Value = value,
+                Cleared = BuildClearedFields((NodePatchField.Value, value is null)),
             };
         }
 
         if (property == SelectionItemPatternIdentifiers.IsSelectedProperty)
         {
+            var selected = AutomationNodeSummaryBuilder.GetSelected(peer);
             return new NodePatchDto
             {
                 Id = id,
-                Selected = AutomationNodeSummaryBuilder.GetSelected(peer),
+                Selected = selected,
+                Cleared = BuildClearedFields((NodePatchField.Selected, selected is null)),
             };
         }
 
         if (property == ExpandCollapsePatternIdentifiers.ExpandCollapseStateProperty)
         {
+            var expanded = AutomationNodeSummaryBuilder.GetExpanded(peer);
             return new NodePatchDto
             {
                 Id = id,
-                Expanded = AutomationNodeSummaryBuilder.GetExpanded(peer),
+                Expanded = expanded,
+                Cleared = BuildClearedFields((NodePatchField.Expanded, expanded is null)),
             };
         }
 
         if (property == TogglePatternIdentifiers.ToggleStateProperty)
         {
+            var checkedState = AutomationNodeSummaryBuilder.GetChecked(peer);
             return new NodePatchDto
             {
                 Id = id,
-                Checked = AutomationNodeSummaryBuilder.GetChecked(peer),
+                Checked = checkedState,
+                Cleared = BuildClearedFields((NodePatchField.Checked, checkedState is null)),
             };
         }
 
         if (property == AutomationElementIdentifiers.ItemStatusProperty)
         {
+            var state = AutomationNodeSummaryBuilder.GetState(peer);
             return new NodePatchDto
             {
                 Id = id,
-                State = AutomationNodeSummaryBuilder.GetState(peer),
+                State = state,
+                Cleared = BuildClearedFields((NodePatchField.State, state is null)),
             };
         }
 
         return null;
+    }
+
+    private static string[]? BuildClearedFields(params (string Field, bool ShouldClear)[] fields)
+    {
+        List<string>? cleared = null;
+
+        foreach (var (field, shouldClear) in fields)
+            AddClearedField(ref cleared, field, shouldClear);
+
+        return cleared?.ToArray();
+    }
+
+    private static void AddClearedField(ref List<string>? cleared, string field, bool shouldClear)
+    {
+        if (!shouldClear)
+            return;
+
+        cleared ??= [];
+        cleared.Add(field);
     }
 
     private static IEnumerable<AutomationPeer> EnumerateSubtree(AutomationPeer root)

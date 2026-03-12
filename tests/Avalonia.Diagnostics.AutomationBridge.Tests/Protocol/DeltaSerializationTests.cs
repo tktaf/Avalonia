@@ -133,6 +133,34 @@ public sealed class DeltaSerializationTests
     }
 
     [Fact]
+    public void NodePatchDto_ClearedFields_RoundTripAndSerialize()
+    {
+        var patch = new NodePatchDto
+        {
+            Id = "n11",
+            Cleared = [NodePatchField.State, NodePatchField.Metadata],
+        };
+
+        var json = JsonSerializer.Serialize(patch, s_options);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.Equal("n11", root.GetProperty("id").GetString());
+        Assert.Equal(2, root.GetProperty("cleared").GetArrayLength());
+        Assert.Equal(NodePatchField.State, root.GetProperty("cleared")[0].GetString());
+        Assert.Equal(NodePatchField.Metadata, root.GetProperty("cleared")[1].GetString());
+        Assert.False(root.TryGetProperty("state", out _));
+        Assert.False(root.TryGetProperty("metadata", out _));
+
+        var restored = JsonSerializer.Deserialize<NodePatchDto>(json, s_options);
+
+        Assert.NotNull(restored);
+        Assert.Equal(patch.Cleared, restored.Cleared);
+        Assert.Null(restored.State);
+        Assert.Null(restored.Metadata);
+    }
+
+    [Fact]
     public void BridgeResponse_WithDelta_RoundTrips()
     {
         var delta = new DeltaDto

@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.AutomationBridge.Protocol.Messages;
+using Avalonia.Controls;
+using Avalonia.Controls.Automation.Peers;
 
 namespace Avalonia.Diagnostics.AutomationBridge.Snapshot;
 
@@ -163,6 +165,9 @@ public static class AutomationNodeSummaryBuilder
         if (TryGetBool(peer.IsKeyboardFocusable))
             actions.Add(BridgeAction.SetFocus);
 
+        if (SupportsShowContextMenu(peer))
+            actions.Add(BridgeAction.ShowContextMenu);
+
         if (TryGetProvider<IScrollProvider>(peer) is not null)
         {
             actions.Add(BridgeAction.Scroll);
@@ -170,6 +175,27 @@ public static class AutomationNodeSummaryBuilder
         }
 
         return actions.ToArray();
+    }
+
+    private static bool SupportsShowContextMenu(AutomationPeer peer)
+    {
+        try
+        {
+            if (peer is not ControlAutomationPeer controlPeer)
+                return false;
+
+            for (Control? control = controlPeer.Owner; control is not null; control = control.Parent as Control)
+            {
+                if (control.ContextMenu is not null)
+                    return true;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
     }
 
     internal static bool? GetSelected(AutomationPeer peer)

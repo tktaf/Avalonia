@@ -242,6 +242,37 @@ public sealed class ActionDispatchTests
     }
 
     [Fact]
+    public void Dispatch_PreservesClearToNullFields_WhenAggregatingMultipleDeltaEvents()
+    {
+        var peer = new StubAutomationPeer
+        {
+            Name = "Original",
+            ItemStatus = "busy; modal=true",
+        };
+        var provider = new MultiEventClearingValueProvider(peer);
+        peer.RegisterProvider<IValueProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest
+            {
+                Action = BridgeAction.SetValue,
+                NodeId = fixture.NodeId,
+                Value = "changed",
+            });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Completed, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        var patch = Assert.Single(response.Delta!.Updated);
+        var cleared = Assert.IsType<string[]>(patch.Cleared);
+        Assert.Equal("changed", patch.Value);
+        Assert.Null(patch.State);
+        Assert.Equal([NodePatchField.State], cleared);
+    }
+
+    [Fact]
     public void Dispatch_PreservesSuccessfulCompletion_WhenValueGetterThrowsDuringDeltaCapture()
     {
         var peer = new StubAutomationPeer();
@@ -419,6 +450,27 @@ public sealed class ActionDispatchTests
         {
             _peer.Name = "Renamed";
             _peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, "Original", "Renamed");
+            Value = value;
+            _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
+        }
+    }
+
+    private sealed class MultiEventClearingValueProvider : IValueProvider
+    {
+        private readonly StubAutomationPeer _peer;
+
+        public MultiEventClearingValueProvider(StubAutomationPeer peer)
+        {
+            _peer = peer;
+        }
+
+        public bool IsReadOnly => false;
+        public string? Value { get; private set; }
+
+        public void SetValue(string? value)
+        {
+            _peer.ItemStatus = null;
+            _peer.RaisePropertyChangedEvent(AutomationElementIdentifiers.ItemStatusProperty, "busy; modal=true", null);
             Value = value;
             _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
         }

@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
+using Avalonia.Controls;
+using Avalonia.Controls.Automation.Peers;
 using Avalonia.AutomationBridge.Protocol.Messages;
 using Avalonia.Diagnostics.AutomationBridge.Snapshot;
 using Xunit;
@@ -394,6 +396,21 @@ public sealed class AutomationNodeSummaryBuilderTests
         Assert.NotNull(dto.Actions);
         Assert.Contains(BridgeAction.Scroll, dto.Actions!);
         Assert.Contains(BridgeAction.SetScrollPercent, dto.Actions!);
+    }
+
+    [Fact]
+    public void Build_IncludesShowContextMenuAction_WhenControlPeerHasContextMenu()
+    {
+        var button = new Button
+        {
+            ContextMenu = new ContextMenu(),
+        };
+        var peer = new ButtonAutomationPeer(button);
+
+        var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
+
+        Assert.NotNull(dto.Actions);
+        Assert.Contains(BridgeAction.ShowContextMenu, dto.Actions!);
     }
 
     [Fact]
