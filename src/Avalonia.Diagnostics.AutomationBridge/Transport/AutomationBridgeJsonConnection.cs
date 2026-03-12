@@ -34,9 +34,11 @@ internal static class AutomationBridgeJsonConnection
 
     private static BridgeResponse Dispatch(Func<BridgeRequest, BridgeResponse> dispatcher, string json)
     {
+        BridgeRequest? request = null;
+
         try
         {
-            var request = AutomationBridgeJsonSerializer.DeserializeRequest(json);
+            request = AutomationBridgeJsonSerializer.DeserializeRequest(json);
             return dispatcher(request);
         }
         catch (JsonException e)
@@ -45,7 +47,7 @@ internal static class AutomationBridgeJsonConnection
         }
         catch (Exception e)
         {
-            return BridgeResponse.Failure(BridgeErrorCode.InternalError, e.Message);
+            return BridgeResponse.Failure(BridgeErrorCode.InternalError, e.Message, request?.RequestId);
         }
     }
 }

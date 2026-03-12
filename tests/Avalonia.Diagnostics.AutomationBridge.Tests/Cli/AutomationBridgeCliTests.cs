@@ -154,6 +154,56 @@ public sealed class AutomationBridgeCliTests
     }
 
     [Fact]
+    public async Task InspectCommand_PreservesStructuredSelectorFailures()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "inspect", "--root-id", rootId, "--automation-id", "missing-node"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.False(response.Ok);
+        Assert.Equal(BridgeErrorCode.NodeNotFound, response.Error!.Code);
+    }
+
+    [Fact]
+    public async Task InvokeCommand_PreservesStructuredSelectorFailures()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        root.AddChild(new StubAutomationPeer { Name = "Save", AutomationId = "save-primary" });
+        root.AddChild(new StubAutomationPeer { Name = "Save", AutomationId = "save-secondary" });
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "invoke", "--root-id", rootId, "--text", "Save"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.False(response.Ok);
+        Assert.Equal(BridgeErrorCode.SelectorAmbiguous, response.Error!.Code);
+    }
+
+    [Fact]
     public async Task WaitForCommand_ReturnsWhenNodeAppears()
     {
         var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };

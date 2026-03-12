@@ -125,13 +125,16 @@ public static class AutomationBridgeCliRunner
         CommandOptions options,
         CancellationToken cancellationToken)
     {
-        var nodeId = await ResolveTargetNodeIdAsync(options, cancellationToken).ConfigureAwait(false);
+        var resolution = await ResolveTargetNodeIdAsync(options, cancellationToken).ConfigureAwait(false);
+        if (resolution.Failure is not null)
+            return resolution.Failure;
+
         var response = await SendAsync(
             options,
             new BridgeRequest
             {
                 Action = BridgeAction.Describe,
-                NodeId = nodeId,
+                NodeId = resolution.NodeId,
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -215,23 +218,26 @@ public static class AutomationBridgeCliRunner
         Func<BridgeRequest, BridgeRequest> configure,
         CancellationToken cancellationToken)
     {
-        var nodeId = await ResolveTargetNodeIdAsync(options, cancellationToken).ConfigureAwait(false);
+        var resolution = await ResolveTargetNodeIdAsync(options, cancellationToken).ConfigureAwait(false);
+        if (resolution.Failure is not null)
+            return resolution.Failure;
+
         var request = configure(new BridgeRequest
         {
             Action = action,
-            NodeId = nodeId,
+            NodeId = resolution.NodeId,
         });
 
         return await SendAsync(options, request, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task<string> ResolveTargetNodeIdAsync(
+    private static async Task<TargetResolutionResult> ResolveTargetNodeIdAsync(
         CommandOptions options,
         CancellationToken cancellationToken)
     {
         var nodeId = ReadOption(options.CommandArgs, "--node-id", required: false);
         if (!string.IsNullOrEmpty(nodeId))
-            return nodeId;
+            return new TargetResolutionResult(nodeId, null);
 
         var rootId = ReadOption(options.CommandArgs, "--root-id", required: false)
             ?? throw new InvalidOperationException("Resolving a target by selector requires --root-id.");
@@ -248,9 +254,10 @@ public static class AutomationBridgeCliRunner
             cancellationToken).ConfigureAwait(false);
 
         if (!response.Ok)
-            throw new InvalidOperationException(response.Error?.Message ?? "Failed to resolve target node.");
+            return new TargetResolutionResult(null, response);
 
-        return AssertSingleNode(response).Id;
+        var node = TryGetSingleNode(response, out var failure);
+        return new TargetResolutionResult(node?.Id, failure);
     }
 
     private static SelectorDto BuildSelector(string[] args)
@@ -551,11 +558,23 @@ Command:
         return csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
-    private static NodeSummaryDto AssertSingleNode(BridgeResponse response)
+    private static NodeSummaryDto? TryGetSingleNode(BridgeResponse response, out BridgeResponse? failure)
     {
         if (response.Nodes is not { Length: 1 })
-            throw new InvalidOperationException("Selector did not resolve to exactly one node.");
+        {
+            failure = response.Nodes is { Length: > 1 }
+                ? BridgeResponse.Failure(
+                    BridgeErrorCode.SelectorAmbiguous,
+                    "Selector did not resolve to exactly one node.",
+                    response.RequestId)
+                : BridgeResponse.Failure(
+                    BridgeErrorCode.NodeNotFound,
+                    "Selector did not resolve to exactly one node.",
+                    response.RequestId);
+            return null;
+        }
 
+        failure = null;
         return response.Nodes[0];
     }
 
@@ -591,6 +610,8 @@ Command:
         OutputMode Output,
         string Command,
         string[] CommandArgs);
+
+    private sealed record TargetResolutionResult(string? NodeId, BridgeResponse? Failure);
 
     private enum OutputMode
     {

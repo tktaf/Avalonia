@@ -126,7 +126,27 @@ public sealed class HostedServiceTransportTests
         Assert.Equal(BridgeErrorCode.ActionFailed, select.Error!.Code);
     }
 
+    [Fact]
+    public async Task Listener_PreservesRequestId_WhenDispatcherThrowsAfterDeserialization()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+
+        using var service = StartService(root, new ThrowingRequestInvoker());
+        var response = await SendAsync(
+            service.BoundPort,
+            new BridgeRequest { Action = BridgeAction.Roots, RequestId = "roots-internal-error" });
+
+        Assert.False(response.Ok);
+        Assert.Equal("roots-internal-error", response.RequestId);
+        Assert.Equal(BridgeErrorCode.InternalError, response.Error!.Code);
+    }
+
     private static AutomationBridgeHostedService StartService(StubRootAutomationPeer root)
+        => StartService(root, new InlineRequestInvoker());
+
+    private static AutomationBridgeHostedService StartService(
+        StubRootAutomationPeer root,
+        IAutomationBridgeRequestInvoker requestInvoker)
     {
         var service = new AutomationBridgeHostedService(
             new AutomationBridgeOptions
@@ -134,7 +154,7 @@ public sealed class HostedServiceTransportTests
                 Port = 0,
                 PeerSourceFactory = () => new[] { root },
             },
-            new InlineRequestInvoker());
+            requestInvoker);
 
         service.Start();
         return service;
@@ -167,6 +187,12 @@ public sealed class HostedServiceTransportTests
     private sealed class InlineRequestInvoker : IAutomationBridgeRequestInvoker
     {
         public BridgeResponse Invoke(Func<BridgeResponse> callback) => callback();
+    }
+
+    private sealed class ThrowingRequestInvoker : IAutomationBridgeRequestInvoker
+    {
+        public BridgeResponse Invoke(Func<BridgeResponse> callback)
+            => throw new InvalidOperationException("dispatcher exploded");
     }
 
     private sealed class ThrowingSelectionItemProvider : ISelectionItemProvider
