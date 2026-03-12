@@ -1,0 +1,145 @@
+using System.Text.Json;
+using Avalonia.AutomationBridge.Protocol.Messages;
+using Xunit;
+
+namespace Avalonia.Diagnostics.AutomationBridge.Tests.Protocol;
+
+public sealed class NodeSummarySerializationTests
+{
+    private static readonly JsonSerializerOptions s_options = ProtocolTestOptions.Default;
+
+    [Fact]
+    public void NodeSummaryDto_RoundTrips_AllFields()
+    {
+        var original = new NodeSummaryDto
+        {
+            Id = "n42",
+            RootId = "w1",
+            Role = "button",
+            Name = "Save",
+            AutomationId = "SaveButton",
+            ClassName = "Button",
+            Enabled = true,
+            Focused = false,
+            Offscreen = false,
+            Value = null,
+            Bounds = [120, 40, 88, 32],
+            Actions = ["invoke"]
+        };
+
+        var json = JsonSerializer.Serialize(original, s_options);
+        var restored = JsonSerializer.Deserialize<NodeSummaryDto>(json, s_options);
+
+        Assert.NotNull(restored);
+        Assert.Equal(original.Id, restored.Id);
+        Assert.Equal(original.RootId, restored.RootId);
+        Assert.Equal(original.Role, restored.Role);
+        Assert.Equal(original.Name, restored.Name);
+        Assert.Equal(original.AutomationId, restored.AutomationId);
+        Assert.Equal(original.ClassName, restored.ClassName);
+        Assert.Equal(original.Enabled, restored.Enabled);
+        Assert.Equal(original.Focused, restored.Focused);
+        Assert.Equal(original.Offscreen, restored.Offscreen);
+        Assert.Null(restored.Value);
+        Assert.Equal(original.Bounds, restored.Bounds);
+        Assert.Equal(original.Actions, restored.Actions);
+    }
+
+    [Fact]
+    public void NodeSummaryDto_StableJsonShape_MatchesDesignSpec()
+    {
+        var node = new NodeSummaryDto
+        {
+            Id = "n42",
+            RootId = "w1",
+            Role = "button",
+            Name = "Save",
+            AutomationId = "SaveButton",
+            ClassName = "Button",
+            Enabled = true,
+            Focused = false,
+            Offscreen = false,
+            Value = null,
+            Bounds = [120.0, 40.0, 88.0, 32.0],
+            Actions = ["invoke"]
+        };
+
+        var json = JsonSerializer.Serialize(node, s_options);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.Equal("n42", root.GetProperty("id").GetString());
+        Assert.Equal("w1", root.GetProperty("rootId").GetString());
+        Assert.Equal("button", root.GetProperty("role").GetString());
+        Assert.Equal("Save", root.GetProperty("name").GetString());
+        Assert.Equal("SaveButton", root.GetProperty("automationId").GetString());
+        Assert.Equal("Button", root.GetProperty("className").GetString());
+        Assert.True(root.GetProperty("enabled").GetBoolean());
+        Assert.False(root.GetProperty("focused").GetBoolean());
+        Assert.False(root.GetProperty("offscreen").GetBoolean());
+        // value is null so omitted under WhenWritingNull
+        Assert.False(root.TryGetProperty("value", out _));
+        var bounds = root.GetProperty("bounds");
+        Assert.Equal(4, bounds.GetArrayLength());
+        Assert.Equal("invoke", root.GetProperty("actions")[0].GetString());
+    }
+
+    [Fact]
+    public void NodeSummaryDto_NullOptionalFields_OmittedFromJson()
+    {
+        var node = new NodeSummaryDto
+        {
+            Id = "n1",
+            RootId = "w1",
+            Role = "pane",
+            Enabled = true,
+            Focused = false,
+            Offscreen = false,
+            Actions = []
+        };
+
+        var json = JsonSerializer.Serialize(node, s_options);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.False(root.TryGetProperty("name", out _));
+        Assert.False(root.TryGetProperty("automationId", out _));
+        Assert.False(root.TryGetProperty("className", out _));
+        Assert.False(root.TryGetProperty("value", out _));
+        Assert.False(root.TryGetProperty("bounds", out _));
+    }
+
+    [Fact]
+    public void NodeSummaryDto_Bounds_RejectsNonFourElementArray()
+    {
+        Assert.Throws<ArgumentException>(() => new NodeSummaryDto
+        {
+            Id = "n1",
+            RootId = "w1",
+            Role = "pane",
+            Enabled = true,
+            Focused = false,
+            Offscreen = false,
+            Actions = [],
+            Bounds = [10, 20, 30] // 3 elements — invalid
+        });
+    }
+
+    [Fact]
+    public void NodeSummaryDto_Bounds_AcceptsNull()
+    {
+        var node = new NodeSummaryDto
+        {
+            Id = "n1",
+            RootId = "w1",
+            Role = "pane",
+            Enabled = true,
+            Focused = false,
+            Offscreen = false,
+            Actions = [],
+            Bounds = null
+        };
+
+        Assert.Null(node.Bounds);
+    }
+}
