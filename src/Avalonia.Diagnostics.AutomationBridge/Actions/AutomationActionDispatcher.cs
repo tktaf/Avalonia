@@ -33,7 +33,10 @@ public static class AutomationActionDispatcher
                 request.RequestId);
         }
 
-        return request.Action switch
+        var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
+        var startingRevision = deltaBuilder.CurrentRevision;
+
+        var response = request.Action switch
         {
             BridgeAction.Invoke => Invoke(peer, request),
             BridgeAction.SetValue => SetValue(peer, request),
@@ -47,6 +50,13 @@ public static class AutomationActionDispatcher
             BridgeAction.SetScrollPercent => SetScrollPercent(peer, request),
             _ => Unsupported(request, $"Action '{request.Action}' is not supported."),
         };
+
+        if (!response.Ok)
+            return response;
+
+        return BridgeResponse.WithDelta(
+            deltaBuilder.CompleteAction(peer, startingRevision),
+            request.RequestId);
     }
 
     private static BridgeResponse Invoke(Avalonia.Automation.Peers.AutomationPeer peer, BridgeRequest request)

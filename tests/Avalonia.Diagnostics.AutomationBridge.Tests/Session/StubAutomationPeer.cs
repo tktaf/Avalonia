@@ -10,7 +10,7 @@ namespace Avalonia.Diagnostics.AutomationBridge.Tests.Session;
 /// Minimal <see cref="AutomationPeer"/> implementation for session unit tests.
 /// All abstract members return safe no-op or configurable values.
 /// </summary>
-internal sealed class StubAutomationPeer : AutomationPeer
+internal class StubAutomationPeer : AutomationPeer
 {
     private AutomationPeer? _parent;
     private readonly List<AutomationPeer> _children = new();
@@ -42,6 +42,21 @@ internal sealed class StubAutomationPeer : AutomationPeer
         _children.Add(child);
         child._parent = this;
     }
+
+    public bool RemoveChild(AutomationPeer child)
+    {
+        if (_children.Remove(child))
+        {
+            if (child is StubAutomationPeer stubChild)
+                stubChild._parent = null;
+
+            return true;
+        }
+
+        return false;
+    }
+
+    public void RaiseChildrenChanged() => RaiseChildrenChangedEvent();
 
     // ---------- abstract overrides ----------
 

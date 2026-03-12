@@ -27,6 +27,7 @@ public sealed class AutomationBridgeSession : IDisposable
 {
     private readonly ITopLevelPeerSource _peerSource;
     private readonly AutomationHandleRegistry _handleRegistry = new();
+    private readonly Dictionary<string, AutomationDeltaBuilder> _deltaBuilders = new(StringComparer.Ordinal);
     private bool _disposed;
 
     /// <summary>
@@ -148,8 +149,46 @@ public sealed class AutomationBridgeSession : IDisposable
         return AutomationNodeSummaryBuilder.Build(peer, handle, rootId);
     }
 
+    internal bool TryGetHandle(AutomationPeer peer, [NotNullWhen(true)] out string? handle)
+    {
+        ThrowIfDisposed();
+        return _handleRegistry.TryGetHandle(peer, out handle);
+    }
+
+    internal AutomationDeltaBuilder GetOrCreateDeltaBuilder(string rootId)
+    {
+        ThrowIfDisposed();
+
+        if (_deltaBuilders.TryGetValue(rootId, out var existing))
+            return existing;
+
+        if (!TryGetRootPeer(rootId, out var rootPeer))
+            throw new InvalidOperationException($"Root '{rootId}' was not found.");
+
+        var builder = new AutomationDeltaBuilder(this, rootPeer);
+        _deltaBuilders[rootId] = builder;
+        return builder;
+    }
+
+    internal AutomationDeltaBuilder GetOrCreateDeltaBuilderForPeer(AutomationPeer peer)
+    {
+        var rootId = SummarizePeer(peer).RootId;
+        return GetOrCreateDeltaBuilder(rootId);
+    }
+
     /// <summary>Disposes the session, releasing all held state.</summary>
-    public void Dispose() => _disposed = true;
+    public void Dispose()
+    {
+        if (_disposed)
+            return;
+
+        foreach (var builder in _deltaBuilders.Values)
+        {
+            builder.Dispose();
+        }
+
+        _disposed = true;
+    }
 
     // -------------------------------------------------------------------------
     // Private helpers
