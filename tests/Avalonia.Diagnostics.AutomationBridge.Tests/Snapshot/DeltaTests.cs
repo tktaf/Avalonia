@@ -146,28 +146,6 @@ public sealed class DeltaTests
         Assert.Equal(BridgeErrorCode.StaleRevision, response.Error!.Code);
     }
 
-    private sealed class StubRootAutomationPeer : StubAutomationPeer, IRootProvider
-    {
-        private AutomationPeer? _focusPeer;
-
-        public StubRootAutomationPeer()
-        {
-            RegisterProvider<IRootProvider>(this);
-        }
-
-        public ITopLevelImpl? PlatformImpl => null;
-
-        public AutomationPeer? GetFocus() => _focusPeer;
-
-        public AutomationPeer? GetPeerFromPoint(Point p) => null;
-
-        public event EventHandler? FocusChanged;
-
-        public void SetFocusPeer(AutomationPeer? peer) => _focusPeer = peer;
-
-        public void RaiseFocusChanged() => FocusChanged?.Invoke(this, EventArgs.Empty);
-    }
-
     private sealed class StubInvokeProvider : IInvokeProvider
     {
         public int CallCount { get; private set; }

@@ -33,6 +33,7 @@ public sealed class ActivationTests
         AutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
+            Port = 0,
             OnServiceRegistered = svc => capturedService = svc
         };
 
@@ -80,6 +81,7 @@ public sealed class ActivationTests
         builder.AfterSetupCallback(builder);
 
         Assert.True(capturedService!.IsRunning);
+        capturedService.Stop();
     }
 
     [Fact]
@@ -108,6 +110,7 @@ public sealed class ActivationTests
         AutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
+            Port = 0,
             OnServiceRegistered = svc => capturedService = svc
         };
 
@@ -140,6 +143,7 @@ public sealed class ActivationTests
 
         Assert.True(otherCallbackFired, "pre-existing AfterSetup callback must still fire");
         Assert.True(capturedService!.IsRunning, "bridge service must still start");
+        capturedService.Stop();
     }
 
     [Fact]
@@ -148,6 +152,7 @@ public sealed class ActivationTests
         AutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
+            Port = 0,
             OnServiceRegistered = svc => capturedService = svc
         };
         var otherCallbackFired = false;
@@ -160,6 +165,7 @@ public sealed class ActivationTests
 
         Assert.True(capturedService!.IsRunning);
         Assert.True(otherCallbackFired);
+        capturedService.Stop();
     }
 
     [Fact]
@@ -186,8 +192,8 @@ public sealed class ActivationTests
     [Fact]
     public void Start_IsIdempotent()
     {
-        var opts = new AutomationBridgeOptions();
-        var service = new AutomationBridgeHostedService(opts);
+        var opts = new AutomationBridgeOptions { Port = 0 };
+        using var service = new AutomationBridgeHostedService(opts);
 
         service.Start();
         service.Start(); // second call must be a no-op
@@ -198,8 +204,8 @@ public sealed class ActivationTests
     [Fact]
     public void Stop_IsIdempotent()
     {
-        var opts = new AutomationBridgeOptions();
-        var service = new AutomationBridgeHostedService(opts);
+        var opts = new AutomationBridgeOptions { Port = 0 };
+        using var service = new AutomationBridgeHostedService(opts);
 
         service.Start();
         service.Stop();
@@ -211,8 +217,8 @@ public sealed class ActivationTests
     [Fact]
     public void Service_CanBeStopped_AfterStart()
     {
-        var opts = new AutomationBridgeOptions();
-        var service = new AutomationBridgeHostedService(opts);
+        var opts = new AutomationBridgeOptions { Port = 0 };
+        using var service = new AutomationBridgeHostedService(opts);
 
         service.Start();
         Assert.True(service.IsRunning);

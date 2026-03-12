@@ -1,3 +1,5 @@
+using Avalonia.Automation.Peers;
+
 namespace Avalonia.Diagnostics.AutomationBridge;
 
 /// <summary>
@@ -22,4 +24,10 @@ public sealed class AutomationBridgeOptions
     /// Production code rarely needs this hook.
     /// </remarks>
     public Action<Hosting.AutomationBridgeHostedService>? OnServiceRegistered { get; set; }
+
+    /// <summary>
+    /// Optional root-peer factory used to create per-connection sessions.
+    /// When null, the bridge reads live roots from <see cref="Application.ApplicationLifetime"/>.
+    /// </summary>
+    public Func<IReadOnlyList<AutomationPeer>>? PeerSourceFactory { get; set; }
 }

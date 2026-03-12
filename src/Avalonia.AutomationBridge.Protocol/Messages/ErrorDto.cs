@@ -25,6 +25,9 @@ public static class BridgeErrorCode
 
     /// <summary>The client's revision is older than the current bridge revision.</summary>
     public const string StaleRevision = "stale_revision";
+
+    /// <summary>The supplied request payload could not be parsed or validated.</summary>
+    public const string InvalidRequest = "invalid_request";
 }
 
 /// <summary>Error payload returned in a failed <see cref="BridgeResponse"/>.</summary>
