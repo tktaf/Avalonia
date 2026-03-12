@@ -35,6 +35,15 @@ public static class BridgeAction
     /// <summary>Move keyboard focus to the target node.</summary>
     public const string SetFocus = "set-focus";
 
+    /// <summary>Open the target node's context menu.</summary>
+    public const string ShowContextMenu = "show-context-menu";
+
+    /// <summary>Scroll the target node by provider-defined increments.</summary>
+    public const string Scroll = "scroll";
+
+    /// <summary>Set the target node's scroll offsets as percentages.</summary>
+    public const string SetScrollPercent = "set-scroll-percent";
+
     /// <summary>Subscribe to revision updates for a root.</summary>
     public const string Watch = "watch";
 }
@@ -69,6 +78,22 @@ public sealed class BridgeRequest
     /// <summary>Value string for set-value requests.</summary>
     [JsonPropertyName("value")]
     public string? Value { get; init; }
+
+    /// <summary>Horizontal scroll amount for scroll requests.</summary>
+    [JsonPropertyName("horizontalAmount")]
+    public string? HorizontalAmount { get; init; }
+
+    /// <summary>Vertical scroll amount for scroll requests.</summary>
+    [JsonPropertyName("verticalAmount")]
+    public string? VerticalAmount { get; init; }
+
+    /// <summary>Horizontal scroll percentage for set-scroll-percent requests.</summary>
+    [JsonPropertyName("horizontalPercent")]
+    public double? HorizontalPercent { get; init; }
+
+    /// <summary>Vertical scroll percentage for set-scroll-percent requests.</summary>
+    [JsonPropertyName("verticalPercent")]
+    public double? VerticalPercent { get; init; }
 
     /// <summary>
     /// Client's last-known revision, used for watch and delta requests.

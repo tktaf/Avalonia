@@ -25,6 +25,7 @@ internal sealed class StubAutomationPeer : AutomationPeer
     public bool KeyboardFocus { get; set; }
     public bool KeyboardFocusable { get; set; }
     public Rect BoundingRectangle { get; set; }
+    public int SetFocusCallCount { get; private set; }
 
     /// <summary>
     /// Registers a provider that the peer can later return for the requested provider type.
@@ -60,7 +61,7 @@ internal sealed class StubAutomationPeer : AutomationPeer
     protected override bool IsControlElementCore() => true;
     protected override bool IsEnabledCore() => Enabled;
     protected override bool IsKeyboardFocusableCore() => KeyboardFocusable;
-    protected override void SetFocusCore() { }
+    protected override void SetFocusCore() => SetFocusCallCount++;
     protected override bool ShowContextMenuCore() => false;
     // Cross-assembly override: the base declares 'protected internal abstract'.
     // From outside the declaring assembly, 'protected' is the correct override modifier.
