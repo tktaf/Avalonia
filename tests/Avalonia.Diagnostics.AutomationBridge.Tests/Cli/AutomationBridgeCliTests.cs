@@ -101,6 +101,7 @@ public sealed class AutomationBridgeCliTests
         {
             Name = "The Analyst",
             AutomationId = "gm-archetype-analyst",
+            ItemStatus = "currentTab=Contract",
         };
         option.RegisterProvider<ISelectionItemProvider>(new StubSelectionItemProvider(isSelected: true));
         root.AddChild(option);
@@ -114,11 +115,12 @@ public sealed class AutomationBridgeCliTests
             "query",
             "--root-id", rootId,
             "--automation-id", "gm-archetype-analyst",
-            "--fields", "name,selected");
+            "--fields", "name,selected,state");
         var node = Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes));
 
         Assert.Equal("The Analyst", node.Name);
         Assert.True(node.Selected);
+        Assert.Equal("Contract", node.State!["currentTab"]);
         Assert.Null(node.AutomationId);
         Assert.Null(node.Actions);
     }

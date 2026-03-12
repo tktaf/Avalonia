@@ -57,7 +57,27 @@ The bridge exposes generic state such as:
 - `expanded`
 - `checked`
 
-Apps should make these states observable through normal Avalonia automation peers and providers instead of forcing callers to infer them from surrounding text.
+It also projects `AutomationProperties.ItemStatus` into a structured `state` bag on the node summary and delta stream.
+
+Use that state bag for app-specific semantics that callers should not have to reconstruct indirectly, for example:
+
+- `busy=true`
+- `modal=true`
+- `currentStep=7`
+- `currentTab=Contract`
+- `navigationContext=Players`
+
+Recommended format:
+
+- semicolon-delimited entries
+- `key=value` for named state
+- bare tokens for boolean flags
+
+Example:
+
+- `busy; modal; currentStep=7; currentTab=Contract; navigationContext=Players`
+
+Apps should still make standard interaction state observable through normal Avalonia automation peers and providers instead of forcing callers to infer them from surrounding text.
 
 Examples:
 
@@ -79,7 +99,7 @@ Useful sources:
 Recommended uses:
 
 - item type such as `team-option`, `player-row`, or `transaction-card`
-- item status such as `busy`, `inactive`, or `week-4`
+- item status such as `busy`, `inactive`, `week-4`, or `currentTab=Contract`
 - concise help text for extra context that should not become the primary node label
 
 ## Repeated Rows, Cards, and List Items
@@ -114,17 +134,20 @@ For wizard screens:
 - expose stable ids for next, back, and submit actions
 - name each step clearly
 - expose selected step controls through selection semantics where applicable
+- expose current step through `AutomationProperties.ItemStatus` when there is no natural selectable step control
 
 For tabs:
 
 - each tab should have a stable `AutomationId`
 - the active tab should expose `selected = true`
+- tab containers can also publish `currentTab=...` through item status when clients need a single synchronization target
 
 For modals:
 
 - confirm and dismiss actions need stable ids
 - modal content should have a clear title/name
 - disabled background affordances are useful, but not a substitute for identifying the modal itself
+- publish `modal=true` on the active modal container when that state matters to automation
 
 ## Async Commands
 
@@ -135,7 +158,7 @@ Prefer surfaces that change one of:
 - visible status text
 - selected/expanded state
 - enabled/disabled state
-- item status metadata
+- item status state such as `busy=true`
 
 Do not rely on silent command execution where the only proof of progress is a later screen dump.
 

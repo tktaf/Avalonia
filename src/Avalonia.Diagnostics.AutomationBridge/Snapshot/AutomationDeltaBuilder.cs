@@ -173,6 +173,7 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             Expanded = summary.Expanded,
             Checked = summary.Checked,
             Value = summary.Value,
+            State = summary.State,
             Metadata = summary.Metadata,
         };
     }
@@ -183,7 +184,13 @@ internal sealed class AutomationDeltaBuilder : IDisposable
 
         if (property == AutomationElementIdentifiers.NameProperty)
         {
-            return new NodePatchDto { Id = id, Name = peer.GetName() };
+            var (name, metadata) = AutomationNodeSummaryBuilder.BuildNameAndMetadataForPatch(peer.GetName());
+            return new NodePatchDto
+            {
+                Id = id,
+                Name = name,
+                Metadata = metadata,
+            };
         }
 
         if (property == ValuePatternIdentifiers.ValueProperty)
@@ -219,6 +226,15 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             {
                 Id = id,
                 Checked = AutomationNodeSummaryBuilder.GetChecked(peer),
+            };
+        }
+
+        if (property == AutomationElementIdentifiers.ItemStatusProperty)
+        {
+            return new NodePatchDto
+            {
+                Id = id,
+                State = AutomationNodeSummaryBuilder.GetState(peer),
             };
         }
 

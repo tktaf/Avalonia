@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -352,6 +353,9 @@ public static class AutomationBridgeCliRunner
         if (node.Actions is { Length: > 0 })
             parts.Add($"actions={string.Join(",", node.Actions)}");
 
+        if (node.State is { Count: > 0 } state)
+            parts.Add($"state={string.Join(",", state.Select(pair => $"{pair.Key}:{pair.Value}"))}");
+
         return string.Join(" ", parts);
     }
 
@@ -383,6 +387,7 @@ public static class AutomationBridgeCliRunner
                 Value = Include(requested, "value") ? node.Value : null,
                 Bounds = Include(requested, "bounds") ? node.Bounds : null,
                 Actions = Include(requested, "actions") ? node.Actions : null,
+                State = Include(requested, "state") ? node.State : null,
                 Metadata = Include(requested, "metadata") ? node.Metadata : null,
             };
         }

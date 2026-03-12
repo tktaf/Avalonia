@@ -92,6 +92,11 @@ public sealed class NodeSummaryDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string[]? Actions { get; init; }
 
+    /// <summary>Structured state bag extracted from the automation surface when available.</summary>
+    [JsonPropertyName("state")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? State { get; init; }
+
     /// <summary>Structured metadata extracted from the automation surface when available.</summary>
     [JsonPropertyName("metadata")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

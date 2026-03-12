@@ -18,7 +18,13 @@ public sealed class DeltaSerializationTests
             Updated =
             [
                 new NodePatchDto { Id = "n42", Enabled = false, Selected = true },
-                new NodePatchDto { Id = "n55", Focused = true, Metadata = new Dictionary<string, string> { ["Key"] = "value" } }
+                new NodePatchDto
+                {
+                    Id = "n55",
+                    Focused = true,
+                    State = new Dictionary<string, string> { ["currentTab"] = "Contract" },
+                    Metadata = new Dictionary<string, string> { ["Key"] = "value" }
+                }
             ],
             Added = [],
             Removed = []
@@ -36,6 +42,7 @@ public sealed class DeltaSerializationTests
         Assert.True(restored.Updated[0].Selected);
         Assert.Equal("n55", restored.Updated[1].Id);
         Assert.True(restored.Updated[1].Focused);
+        Assert.Equal("Contract", restored.Updated[1].State!["currentTab"]);
         Assert.Equal("value", restored.Updated[1].Metadata!["Key"]);
         Assert.Empty(restored.Added);
         Assert.Empty(restored.Removed);
@@ -121,6 +128,7 @@ public sealed class DeltaSerializationTests
         Assert.False(root.TryGetProperty("selected", out _));
         Assert.False(root.TryGetProperty("expanded", out _));
         Assert.False(root.TryGetProperty("checked", out _));
+        Assert.False(root.TryGetProperty("state", out _));
         Assert.False(root.TryGetProperty("metadata", out _));
     }
 

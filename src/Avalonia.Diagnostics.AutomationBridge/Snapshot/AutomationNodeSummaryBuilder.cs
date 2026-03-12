@@ -72,6 +72,7 @@ public static class AutomationNodeSummaryBuilder
             Value = TryGetValue(peer),
             Bounds = bounds,
             Actions = actions,
+            State = GetState(peer),
             Metadata = metadata,
         };
     }
@@ -195,12 +196,70 @@ public static class AutomationNodeSummaryBuilder
         };
     }
 
+    internal static IReadOnlyDictionary<string, string>? GetState(AutomationPeer peer)
+        => ParseState(TryGetString(peer.GetItemStatus));
+
+    internal static (string? Name, IReadOnlyDictionary<string, string>? Metadata) BuildNameAndMetadataForPatch(string? rawName)
+        => BuildNameAndMetadata(rawName);
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
     private static string? NullIfEmpty(string? value)
         => string.IsNullOrEmpty(value) ? null : value;
+
+    private static IReadOnlyDictionary<string, string>? ParseState(string? rawState)
+    {
+        rawState = NullIfEmpty(rawState);
+        if (rawState is null)
+            return null;
+
+        Dictionary<string, string>? state = null;
+        foreach (var segment in rawState.Split([';', '|', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!TryParseStateSegment(segment.Trim(','), out var key, out var value))
+                continue;
+
+            state ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            state[key] = value;
+        }
+
+        return state is { Count: > 0 }
+            ? state
+            : new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["status"] = rawState,
+            };
+    }
+
+    private static bool TryParseStateSegment(string segment, out string key, out string value)
+    {
+        key = string.Empty;
+        value = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(segment))
+            return false;
+
+        var separatorIndex = segment.IndexOfAny(['=', ':']);
+        if (separatorIndex >= 0)
+        {
+            key = segment[..separatorIndex].Trim();
+            value = segment[(separatorIndex + 1)..].Trim();
+            return key.Length > 0 && value.Length > 0;
+        }
+
+        if (segment.Contains(' ', StringComparison.Ordinal))
+        {
+            key = "status";
+            value = segment;
+            return true;
+        }
+
+        key = segment;
+        value = bool.TrueString.ToLowerInvariant();
+        return true;
+    }
 
     private static string TryGetRole(AutomationPeer peer)
     {

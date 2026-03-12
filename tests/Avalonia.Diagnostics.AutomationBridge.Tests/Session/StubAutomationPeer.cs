@@ -20,6 +20,7 @@ internal class StubAutomationPeer : AutomationPeer
     public AutomationControlType ControlType { get; set; } = AutomationControlType.Custom;
     public string? AutomationId { get; set; }
     public string? Name { get; set; }
+    public string? ItemStatus { get; set; }
     public string ClassName { get; set; } = string.Empty;
     public bool Enabled { get; set; } = true;
     public bool KeyboardFocus { get; set; }
@@ -92,6 +93,7 @@ internal class StubAutomationPeer : AutomationPeer
 
         return ClassName;
     }
+    protected override string? GetItemStatusCore() => ItemStatus;
     protected override AutomationPeer? GetLabeledByCore() => null;
     protected override string? GetNameCore()
     {

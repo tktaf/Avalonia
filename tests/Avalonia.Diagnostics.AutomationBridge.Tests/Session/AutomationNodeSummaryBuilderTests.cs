@@ -227,6 +227,24 @@ public sealed class AutomationNodeSummaryBuilderTests
         Assert.True(dto.Checked);
     }
 
+    [Fact]
+    public void Build_ParsesState_FromItemStatus()
+    {
+        var peer = new StubAutomationPeer
+        {
+            ItemStatus = "busy; modal; currentStep=7; currentTab=Contract; navigationContext=Players",
+        };
+
+        var dto = AutomationNodeSummaryBuilder.Build(peer, "n1", "w1");
+
+        Assert.NotNull(dto.State);
+        Assert.Equal("true", dto.State!["busy"]);
+        Assert.Equal("true", dto.State["modal"]);
+        Assert.Equal("7", dto.State["currentStep"]);
+        Assert.Equal("Contract", dto.State["currentTab"]);
+        Assert.Equal("Players", dto.State["navigationContext"]);
+    }
+
     // -------------------------------------------------------------------------
     // Actions
     // -------------------------------------------------------------------------

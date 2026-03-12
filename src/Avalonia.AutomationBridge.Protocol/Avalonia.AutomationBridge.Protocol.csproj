@@ -6,4 +6,6 @@
     <!-- Dev-only protocol assembly: not a shipping package -->
     <IsPackable>false</IsPackable>
   </PropertyGroup>
+
+  <Import Project="..\..\build\DevAnalyzers.props" />
 </Project>
