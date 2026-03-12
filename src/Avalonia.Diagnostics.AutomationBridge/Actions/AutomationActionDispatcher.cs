@@ -121,7 +121,14 @@ public static class AutomationActionDispatcher
     private static BridgeResponse Expand(Avalonia.Automation.Peers.AutomationPeer peer, BridgeRequest request)
     {
         var provider = peer.GetProvider<IExpandCollapseProvider>();
-        if (provider is null || !Snapshot.AutomationNodeSummaryBuilder.SupportsExpandCollapse(peer))
+        if (provider is null)
+            return Unsupported(request, "Expand is not supported for this node.");
+
+        var state = GetExpandCollapseState(provider, request, BridgeAction.Expand);
+        if (!state.Ok)
+            return state.Response!;
+
+        if (state.Value == Avalonia.Automation.ExpandCollapseState.LeafNode)
             return Unsupported(request, "Expand is not supported for this node.");
 
         provider.Expand();
@@ -131,7 +138,14 @@ public static class AutomationActionDispatcher
     private static BridgeResponse Collapse(Avalonia.Automation.Peers.AutomationPeer peer, BridgeRequest request)
     {
         var provider = peer.GetProvider<IExpandCollapseProvider>();
-        if (provider is null || !Snapshot.AutomationNodeSummaryBuilder.SupportsExpandCollapse(peer))
+        if (provider is null)
+            return Unsupported(request, "Collapse is not supported for this node.");
+
+        var state = GetExpandCollapseState(provider, request, BridgeAction.Collapse);
+        if (!state.Ok)
+            return state.Response!;
+
+        if (state.Value == Avalonia.Automation.ExpandCollapseState.LeafNode)
             return Unsupported(request, "Collapse is not supported for this node.");
 
         provider.Collapse();
@@ -195,6 +209,33 @@ public static class AutomationActionDispatcher
         };
     }
 
+    private static ExpandCollapseStateResult GetExpandCollapseState(
+        IExpandCollapseProvider provider,
+        BridgeRequest request,
+        string action)
+    {
+        try
+        {
+            return new ExpandCollapseStateResult(provider.ExpandCollapseState, null);
+        }
+        catch (Exception e)
+        {
+            return new ExpandCollapseStateResult(
+                null,
+                BridgeResponse.Failure(
+                    BridgeErrorCode.ActionFailed,
+                    $"Action '{action}' failed: {e.Message}",
+                    request.RequestId));
+        }
+    }
+
     private static BridgeResponse Unsupported(BridgeRequest request, string message)
         => BridgeResponse.Failure(BridgeErrorCode.ActionNotSupported, message, request.RequestId);
+
+    private sealed record ExpandCollapseStateResult(
+        Avalonia.Automation.ExpandCollapseState? Value,
+        BridgeResponse? Response)
+    {
+        public bool Ok => Response is null;
+    }
 }

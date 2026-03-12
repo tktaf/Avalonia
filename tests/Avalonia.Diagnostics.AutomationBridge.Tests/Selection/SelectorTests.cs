@@ -170,6 +170,41 @@ public sealed class SelectorTests
     }
 
     [Fact]
+    public void Evaluate_DoesNotTreatThrowingRoleGetter_AsCustomRole()
+    {
+        var root = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Window,
+            Name = "Main Window",
+        };
+        var broken = new StubAutomationPeer
+        {
+            Name = "Broken",
+            ControlTypeException = new InvalidOperationException("role exploded"),
+        };
+        var actualCustom = new StubAutomationPeer
+        {
+            ControlType = AutomationControlType.Custom,
+            Name = "Actual Custom",
+        };
+        root.AddChild(broken);
+        root.AddChild(actualCustom);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new AutomationPeer[] { root }));
+        var rootId = session.GetRoots().Single().Id;
+
+        var response = AutomationSelectorEvaluator.Evaluate(
+            session,
+            rootId,
+            new SelectorDto { Role = "custom" });
+        var nodes = Assert.IsType<NodeSummaryDto[]>(response.Nodes);
+
+        Assert.True(response.Ok);
+        Assert.Single(nodes);
+        Assert.Equal("Actual Custom", nodes[0].Name);
+    }
+
+    [Fact]
     public void Evaluate_FindsNode_ByClassName()
     {
         var fixture = CreateFixture();

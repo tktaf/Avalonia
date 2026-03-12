@@ -336,6 +336,9 @@ public static class AutomationNodeSummaryBuilder
     }
 
     internal static string TryGetRole(AutomationPeer peer)
+        => TryGetRoleOrNull(peer) ?? "custom";
+
+    internal static string? TryGetRoleOrNull(AutomationPeer peer)
     {
         try
         {
@@ -343,7 +346,7 @@ public static class AutomationNodeSummaryBuilder
         }
         catch
         {
-            return "custom";
+            return null;
         }
     }
 

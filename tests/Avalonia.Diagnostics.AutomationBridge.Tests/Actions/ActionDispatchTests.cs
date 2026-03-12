@@ -384,6 +384,25 @@ public sealed class ActionDispatchTests
         Assert.Contains("invoke", response.Error.Message!, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(BridgeAction.Expand)]
+    [InlineData(BridgeAction.Collapse)]
+    public void Dispatch_ReturnsStructuredError_WhenExpandCollapseStateGetterThrows(string action)
+    {
+        var peer = new StubAutomationPeer();
+        peer.RegisterProvider<IExpandCollapseProvider>(new ThrowingExpandCollapseStateProvider());
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest { Action = action, NodeId = fixture.NodeId, RequestId = "expand-state-throw" });
+
+        Assert.False(response.Ok);
+        Assert.Equal("expand-state-throw", response.RequestId);
+        Assert.Equal(BridgeErrorCode.ActionFailed, response.Error!.Code);
+        Assert.Contains(action, response.Error.Message!, StringComparison.OrdinalIgnoreCase);
+    }
+
     private static ActionFixture CreateFixture(StubAutomationPeer node)
     {
         var root = new StubAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
@@ -571,5 +590,15 @@ public sealed class ActionDispatchTests
             LastHorizontalPercent = horizontalPercent;
             LastVerticalPercent = verticalPercent;
         }
+    }
+
+    private sealed class ThrowingExpandCollapseStateProvider : IExpandCollapseProvider
+    {
+        public Avalonia.Automation.ExpandCollapseState ExpandCollapseState
+            => throw new InvalidOperationException("expand state exploded");
+
+        public bool ShowsMenu => false;
+        public void Expand() { }
+        public void Collapse() { }
     }
 }

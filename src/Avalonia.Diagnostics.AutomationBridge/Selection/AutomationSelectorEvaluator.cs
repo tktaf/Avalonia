@@ -134,7 +134,7 @@ public static class AutomationSelectorEvaluator
 
         if (selector.Role is not null
             && !string.Equals(
-                AutomationNodeSummaryBuilder.TryGetRole(peer),
+                AutomationNodeSummaryBuilder.TryGetRoleOrNull(peer),
                 selector.Role,
                 StringComparison.OrdinalIgnoreCase))
         {
