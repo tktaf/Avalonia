@@ -12,13 +12,14 @@ public sealed class AutomationBridgeOptions
     public int Port { get; set; } = 9317;
 
     /// <summary>
-    /// Gets the <see cref="Hosting.AutomationBridgeHostedService"/> created when
-    /// <see cref="AutomationBridgeAppBuilderExtensions.WithDevAutomationBridge"/> was called.
-    /// Null until <c>WithDevAutomationBridge</c> has been invoked on an <see cref="AppBuilder"/>.
+    /// Optional callback invoked by
+    /// <see cref="AutomationBridgeAppBuilderExtensions.WithDevAutomationBridge"/> immediately
+    /// after the hosted-service instance is created (before <c>AfterSetup</c> fires).
     /// </summary>
     /// <remarks>
-    /// Exposed so tests can observe activation state without reaching into production behaviour.
-    /// The setter is <c>internal</c> to prevent external mutation.
+    /// Intended for tests and diagnostics that need to capture the service instance without
+    /// creating a circular dependency between the options type and the service type.
+    /// Production code rarely needs this hook.
     /// </remarks>
-    public Hosting.AutomationBridgeHostedService? RegisteredService { get; internal set; }
+    public Action<Hosting.AutomationBridgeHostedService>? OnServiceRegistered { get; set; }
 }

@@ -16,7 +16,9 @@ namespace Avalonia.Diagnostics.AutomationBridge.Hosting;
 public sealed class AutomationBridgeHostedService
 {
     private readonly AutomationBridgeOptions _options;
-    private volatile bool _isRunning;
+    // 0 = stopped, 1 = running.  All transitions are done via Interlocked to
+    // ensure atomicity even if Start/Stop are called concurrently.
+    private int _runState;
 
     /// <summary>Initializes a new instance with the supplied options.</summary>
     /// <param name="options">Bridge configuration; must not be null.</param>
@@ -31,21 +33,20 @@ public sealed class AutomationBridgeHostedService
     /// <summary>
     /// Gets a value indicating whether the service has been started and has not yet been stopped.
     /// </summary>
-    public bool IsRunning => _isRunning;
+    public bool IsRunning => Volatile.Read(ref _runState) == 1;
 
     /// <summary>
     /// Starts the bridge service.
     /// </summary>
     /// <remarks>
-    /// Idempotent: calling <c>Start</c> on an already-running service is a no-op.
+    /// Idempotent and thread-safe: calling <c>Start</c> on an already-running service is a no-op.
     /// TODO (subsequent tasks): open TCP listener on <see cref="AutomationBridgeOptions.Port"/>.
     /// </remarks>
     public void Start()
     {
-        if (_isRunning)
-            return;
-
-        _isRunning = true;
+        // Atomically transition 0→1.  If the prior value was already 1 the
+        // service was running and this call is a no-op.
+        Interlocked.CompareExchange(ref _runState, 1, 0);
         // TODO: start actual listener in subsequent tasks.
     }
 
@@ -53,15 +54,14 @@ public sealed class AutomationBridgeHostedService
     /// Stops the bridge service.
     /// </summary>
     /// <remarks>
-    /// Idempotent: calling <c>Stop</c> on an already-stopped service is a no-op.
+    /// Idempotent and thread-safe: calling <c>Stop</c> on an already-stopped service is a no-op.
     /// TODO (subsequent tasks): close TCP listener and active sessions.
     /// </remarks>
     public void Stop()
     {
-        if (!_isRunning)
-            return;
-
-        _isRunning = false;
+        // Atomically transition 1→0.  If the prior value was already 0 the
+        // service was stopped and this call is a no-op.
+        Interlocked.CompareExchange(ref _runState, 0, 1);
         // TODO: teardown in subsequent tasks.
     }
 }

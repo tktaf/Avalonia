@@ -10,9 +10,16 @@ namespace Avalonia.Diagnostics.AutomationBridge.Tests.Hosting;
 /// and that it can coexist with other <see cref="AppBuilder"/> customisation.
 /// </summary>
 /// <remarks>
-/// Tests here use <see cref="AppBuilder.AfterSetupCallback"/> directly instead of calling
-/// <c>AppBuilder.Setup()</c>, because full platform initialisation is not available in
-/// the unit-test environment (no windowing / rendering subsystem).
+/// <para>
+/// Tests that need to trigger the AfterSetup phase invoke
+/// <c>builder.AfterSetupCallback(builder)</c> rather than <c>AppBuilder.Setup()</c>.
+/// Full platform initialisation (windowing, rendering, text-shaping subsystems) is not
+/// available in this unit-test environment, making <c>Setup()</c> infeasible without a
+/// heavyweight dependency on Avalonia.Headless and its Skia/HarfBuzz transitive chain —
+/// which is out of scope for this skeletal Task 2 implementation.
+/// <c>AfterSetupCallback</c> is the public surface the builder exposes for exactly this
+/// kind of targeted hook testing.
+/// </para>
 /// </remarks>
 public sealed class ActivationTests
 {
@@ -21,28 +28,36 @@ public sealed class ActivationTests
     // ---------------------------------------------------------------------------
 
     [Fact]
-    public void WithDevAutomationBridge_RegistersService_OnOptions()
+    public void WithDevAutomationBridge_RegistersService_ViaCallback()
     {
-        var opts = new AutomationBridgeOptions();
+        AutomationBridgeHostedService? capturedService = null;
+        var opts = new AutomationBridgeOptions
+        {
+            OnServiceRegistered = svc => capturedService = svc
+        };
 
         AppBuilder.Configure<StubApplication>()
             .WithDevAutomationBridge(opts);
 
-        // The service must be wired as soon as the extension is called —
+        // The service must be created as soon as the extension is called —
         // before AfterSetup fires — so callers can inspect the instance.
-        Assert.NotNull(opts.RegisteredService);
+        Assert.NotNull(capturedService);
     }
 
     [Fact]
     public void WithDevAutomationBridge_ServiceNotRunning_BeforeSetupCompletes()
     {
-        var opts = new AutomationBridgeOptions();
+        AutomationBridgeHostedService? capturedService = null;
+        var opts = new AutomationBridgeOptions
+        {
+            OnServiceRegistered = svc => capturedService = svc
+        };
 
         AppBuilder.Configure<StubApplication>()
             .WithDevAutomationBridge(opts);
 
         // AfterSetupCallback has not been invoked yet; service must be dormant.
-        Assert.False(opts.RegisteredService!.IsRunning);
+        Assert.False(capturedService!.IsRunning);
     }
 
     // ---------------------------------------------------------------------------
@@ -52,7 +67,11 @@ public sealed class ActivationTests
     [Fact]
     public void WithDevAutomationBridge_ServiceStarts_WhenAfterSetupFires()
     {
-        var opts = new AutomationBridgeOptions();
+        AutomationBridgeHostedService? capturedService = null;
+        var opts = new AutomationBridgeOptions
+        {
+            OnServiceRegistered = svc => capturedService = svc
+        };
 
         var builder = AppBuilder.Configure<StubApplication>()
             .WithDevAutomationBridge(opts);
@@ -60,18 +79,23 @@ public sealed class ActivationTests
         // Simulate the AfterSetup phase that runs during AppBuilder.Setup().
         builder.AfterSetupCallback(builder);
 
-        Assert.True(opts.RegisteredService!.IsRunning);
+        Assert.True(capturedService!.IsRunning);
     }
 
     [Fact]
-    public void WithDevAutomationBridge_ServiceRespectsSuppliledPort()
+    public void WithDevAutomationBridge_ServiceRespectsSuppliedPort()
     {
-        var opts = new AutomationBridgeOptions { Port = 19317 };
+        AutomationBridgeHostedService? capturedService = null;
+        var opts = new AutomationBridgeOptions
+        {
+            Port = 19317,
+            OnServiceRegistered = svc => capturedService = svc
+        };
 
         AppBuilder.Configure<StubApplication>()
             .WithDevAutomationBridge(opts);
 
-        Assert.Equal(19317, opts.RegisteredService!.Options.Port);
+        Assert.Equal(19317, capturedService!.Options.Port);
     }
 
     // ---------------------------------------------------------------------------
@@ -79,15 +103,19 @@ public sealed class ActivationTests
     // ---------------------------------------------------------------------------
 
     [Fact]
-    public void WithoutWithDevAutomationBridge_NoServiceRegistered()
+    public void WithoutWithDevAutomationBridge_NoServiceCreated()
     {
-        var opts = new AutomationBridgeOptions();
+        AutomationBridgeHostedService? capturedService = null;
+        var opts = new AutomationBridgeOptions
+        {
+            OnServiceRegistered = svc => capturedService = svc
+        };
 
         // A builder that never had WithDevAutomationBridge called.
         _ = AppBuilder.Configure<StubApplication>();
 
-        // opts.RegisteredService is only populated by the extension method.
-        Assert.Null(opts.RegisteredService);
+        // OnServiceRegistered is never invoked unless WithDevAutomationBridge is called.
+        Assert.Null(capturedService);
     }
 
     // ---------------------------------------------------------------------------
@@ -97,7 +125,11 @@ public sealed class ActivationTests
     [Fact]
     public void WithDevAutomationBridge_CoexistsWith_OtherAfterSetupCallbacks()
     {
-        var opts = new AutomationBridgeOptions();
+        AutomationBridgeHostedService? capturedService = null;
+        var opts = new AutomationBridgeOptions
+        {
+            OnServiceRegistered = svc => capturedService = svc
+        };
         var otherCallbackFired = false;
 
         var builder = AppBuilder.Configure<StubApplication>()
@@ -107,13 +139,17 @@ public sealed class ActivationTests
         builder.AfterSetupCallback(builder);
 
         Assert.True(otherCallbackFired, "pre-existing AfterSetup callback must still fire");
-        Assert.True(opts.RegisteredService!.IsRunning, "bridge service must still start");
+        Assert.True(capturedService!.IsRunning, "bridge service must still start");
     }
 
     [Fact]
     public void WithDevAutomationBridge_AfterOtherAfterSetup_BothFire()
     {
-        var opts = new AutomationBridgeOptions();
+        AutomationBridgeHostedService? capturedService = null;
+        var opts = new AutomationBridgeOptions
+        {
+            OnServiceRegistered = svc => capturedService = svc
+        };
         var otherCallbackFired = false;
 
         var builder = AppBuilder.Configure<StubApplication>()
@@ -122,23 +158,25 @@ public sealed class ActivationTests
 
         builder.AfterSetupCallback(builder);
 
-        Assert.True(opts.RegisteredService!.IsRunning);
+        Assert.True(capturedService!.IsRunning);
         Assert.True(otherCallbackFired);
     }
 
     [Fact]
     public void WithDevAutomationBridge_DefaultOptions_UsesDefaultPort()
     {
-        var builder = AppBuilder.Configure<StubApplication>()
-            .WithDevAutomationBridge();
+        AutomationBridgeHostedService? capturedService = null;
+        // Use an explicit options instance (with all defaults) to capture the service.
+        var opts = new AutomationBridgeOptions
+        {
+            OnServiceRegistered = svc => capturedService = svc
+        };
 
-        // The default port is 9317 per AutomationBridgeOptions.
-        // Retrieve the service via the default opts instance stored internally.
-        // We cannot access opts from the outside when null was passed, but we can
-        // verify indirectly: AfterSetupCallback must exist (non-default action).
-        // The real assertion is that no exception is thrown.
-        builder.AfterSetupCallback(builder);
-        // If we reach here, Start() completed without error.
+        AppBuilder.Configure<StubApplication>()
+            .WithDevAutomationBridge(opts);
+
+        // Default port is 9317 per AutomationBridgeOptions.
+        Assert.Equal(9317, capturedService!.Options.Port);
     }
 
     // ---------------------------------------------------------------------------

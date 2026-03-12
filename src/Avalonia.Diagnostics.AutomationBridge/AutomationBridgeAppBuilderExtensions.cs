@@ -29,9 +29,10 @@ public static class AutomationBridgeAppBuilderExtensions
         var opts = options ?? new AutomationBridgeOptions();
         var service = new AutomationBridgeHostedService(opts);
 
-        // Store back so callers (and tests) can reach the instance without
-        // requiring a separate service-locator lookup.
-        opts.RegisteredService = service;
+        // Notify any observer (typically a test) that the service has been created.
+        // This avoids the circular dependency that arises from storing the service
+        // back on the options object.
+        opts.OnServiceRegistered?.Invoke(service);
 
         return builder.AfterSetup(_ => service.Start());
     }
