@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Avalonia.Automation.Peers;
 using Avalonia.Diagnostics.AutomationBridge.Session;
 using Xunit;
@@ -7,7 +8,9 @@ namespace Avalonia.Diagnostics.AutomationBridge.Tests.Session;
 /// <summary>
 /// Tests for <see cref="AutomationBridgeSession"/>.
 /// Proves per-connection session semantics: root enumeration without tree dumps,
-/// stable handle assignment, and clean invalidation of disappearing peers.
+/// stable handle assignment, clean invalidation of disappearing peers, and liveness
+/// — that <see cref="AutomationBridgeSession.GetRoots"/> reflects the current state of
+/// its <see cref="ITopLevelPeerSource"/> on every call.
 /// </summary>
 public sealed class AutomationBridgeSessionTests
 {
@@ -18,7 +21,7 @@ public sealed class AutomationBridgeSessionTests
     [Fact]
     public void GetRoots_ReturnsEmptyList_WhenNoRootsRegistered()
     {
-        var rootRegistry = new AutomationRootRegistry(Array.Empty<AutomationPeer>);
+        var rootRegistry = new AutomationRootRegistry(System.Array.Empty<AutomationPeer>);
         using var session = new AutomationBridgeSession(rootRegistry);
 
         var roots = session.GetRoots();
@@ -82,6 +85,64 @@ public sealed class AutomationBridgeSessionTests
 
         // For a root node, Id and RootId must be the same handle
         Assert.Equal(roots[0].Id, roots[0].RootId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Liveness — session reads the peer source live on every call
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void GetRoots_ReflectsLiveSourceChanges_AfterSessionCreation()
+    {
+        // Arrange: session is created with an empty source, then the source
+        // changes — GetRoots must reflect the current state, not a snapshot.
+        AutomationPeer[] currentPeers = System.Array.Empty<AutomationPeer>();
+        var source = new AutomationRootRegistry(() => currentPeers);
+        using var session = new AutomationBridgeSession(source);
+
+        Assert.Empty(session.GetRoots());
+
+        // Act: source gains a new root after session was created
+        var lateRoot = new StubAutomationPeer { Name = "LateWindow" };
+        currentPeers = new AutomationPeer[] { lateRoot };
+
+        // Assert: next GetRoots call sees the new root immediately
+        var roots = session.GetRoots();
+        Assert.Single(roots);
+        Assert.Equal("LateWindow", roots[0].Name);
+    }
+
+    [Fact]
+    public void GetRoots_ReflectsSourceBecomingEmpty_AfterWindowClose()
+    {
+        // Arrange: session starts with one root
+        var peer = new StubAutomationPeer { Name = "Window" };
+        AutomationPeer[] currentPeers = new AutomationPeer[] { peer };
+        var source = new AutomationRootRegistry(() => currentPeers);
+        using var session = new AutomationBridgeSession(source);
+
+        Assert.Single(session.GetRoots());
+
+        // Act: the window is closed — source becomes empty
+        currentPeers = System.Array.Empty<AutomationPeer>();
+
+        // Assert: session reflects the absence of roots
+        Assert.Empty(session.GetRoots());
+    }
+
+    [Fact]
+    public void GetRoots_AcceptsAnyITopLevelPeerSource_NotOnlyRegistry()
+    {
+        // Proves AutomationBridgeSession is coupled to ITopLevelPeerSource,
+        // not specifically to AutomationRootRegistry.
+        var peer = new StubAutomationPeer { Name = "Standalone" };
+        var customSource = new LambdaTopLevelPeerSource(() => new AutomationPeer[] { peer });
+
+        using var session = new AutomationBridgeSession(customSource);
+        var roots = session.GetRoots();
+
+        Assert.Single(roots);
+        Assert.Equal("Standalone", roots[0].Name);
     }
 
     // -------------------------------------------------------------------------
@@ -212,5 +273,24 @@ public sealed class AutomationBridgeSessionTests
         session.Dispose();
 
         Assert.Throws<ObjectDisposedException>(() => session.TryGetPeer("w1", out _));
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// A minimal <see cref="ITopLevelPeerSource"/> backed by a lambda,
+    /// used to prove <see cref="AutomationBridgeSession"/> accepts any implementation
+    /// of the interface, not only <see cref="AutomationRootRegistry"/>.
+    /// </summary>
+    private sealed class LambdaTopLevelPeerSource : ITopLevelPeerSource
+    {
+        private readonly System.Func<IReadOnlyList<AutomationPeer>> _getPeers;
+
+        public LambdaTopLevelPeerSource(System.Func<IReadOnlyList<AutomationPeer>> getPeers)
+            => _getPeers = getPeers;
+
+        public IReadOnlyList<AutomationPeer> GetPeers() => _getPeers();
     }
 }

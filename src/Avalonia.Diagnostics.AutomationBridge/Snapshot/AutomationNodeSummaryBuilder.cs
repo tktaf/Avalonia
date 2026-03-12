@@ -58,7 +58,10 @@ public static class AutomationNodeSummaryBuilder
     // Role mapping
     // -------------------------------------------------------------------------
 
-    private static string GetRole(AutomationControlType type) => type switch
+    /// <summary>Returns the protocol role string for <paramref name="peer"/>.</summary>
+    internal static string GetRole(AutomationPeer peer) => GetRole(peer.GetAutomationControlType());
+
+    internal static string GetRole(AutomationControlType type) => type switch
     {
         AutomationControlType.Button       => "button",
         AutomationControlType.Calendar     => "calendar",

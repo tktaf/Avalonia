@@ -7,13 +7,29 @@ using Avalonia.Controls.ApplicationLifetimes;
 namespace Avalonia.Diagnostics.AutomationBridge.Session;
 
 /// <summary>
-/// Maintains the ordered list of top-level automation roots for a bridge session.
+/// An <see cref="ITopLevelPeerSource"/> that enumerates root peers from the current application
+/// lifetime on each call, so sessions always reflect the live window set.
 /// </summary>
 /// <remarks>
-/// Roots are discovered from the current <see cref="Application.ApplicationLifetime"/> on
-/// demand so that sessions enumerate the live top-levels that Avalonia already knows about.
+/// <para>
+/// On each <see cref="GetPeers"/> call the registry reads
+/// <see cref="Application.ApplicationLifetime"/>:
+/// <list type="bullet">
+///   <item><see cref="IClassicDesktopStyleApplicationLifetime"/> — returns a peer for every open window.</item>
+///   <item><see cref="ISingleTopLevelApplicationLifetime"/> — returns a single peer when a top-level is present.</item>
+///   <item>Any other value (including <see langword="null"/>) — returns an empty list.</item>
+/// </list>
+/// </para>
+/// <para>
+/// An internal constructor accepting a <see cref="Func{TResult}"/> delegate is available for
+/// unit tests that need to inject a controlled peer list without a running application.
+/// </para>
+/// <para>
+/// The registry is not thread-safe; callers must synchronise access if roots can change
+/// concurrently.
+/// </para>
 /// </remarks>
-public sealed class AutomationRootRegistry
+public sealed class AutomationRootRegistry : ITopLevelPeerSource
 {
     private readonly Func<IReadOnlyList<AutomationPeer>> _rootProvider;
 
@@ -34,8 +50,15 @@ public sealed class AutomationRootRegistry
         _rootProvider = rootProvider ?? throw new ArgumentNullException(nameof(rootProvider));
     }
 
-    /// <summary>The current ordered list of root peers.</summary>
+    /// <summary>The current ordered list of root peers, sourced from the application lifetime.</summary>
     public IReadOnlyList<AutomationPeer> Roots => _rootProvider();
+
+    /// <inheritdoc/>
+    IReadOnlyList<AutomationPeer> ITopLevelPeerSource.GetPeers() => Roots;
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
 
     private static IReadOnlyList<AutomationPeer> GetCurrentRoots()
     {

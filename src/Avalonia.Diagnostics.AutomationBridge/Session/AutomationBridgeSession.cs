@@ -8,14 +8,15 @@ using Avalonia.Diagnostics.AutomationBridge.Snapshot;
 namespace Avalonia.Diagnostics.AutomationBridge.Session;
 
 /// <summary>
-/// Per-connection session state that ties together the root and handle registries.
+/// Per-connection session state that ties together the top-level peer source and the
+/// session-local handle registry.
 /// </summary>
 /// <remarks>
 /// <para>
 /// One <see cref="AutomationBridgeSession"/> is created for each client connection.
-/// It owns a <see cref="AutomationHandleRegistry"/> (handle assignment is session-local)
-/// but shares a <see cref="AutomationRootRegistry"/> with the host process (roots are
-/// global to the application lifetime).
+/// It owns an <see cref="AutomationHandleRegistry"/> (handle assignment is session-local)
+/// and holds a reference to an <see cref="ITopLevelPeerSource"/> that reflects the live
+/// application window set on each call.
 /// </para>
 /// <para>
 /// Sessions are not thread-safe.  The connection owner must serialise calls or hold an
@@ -24,19 +25,19 @@ namespace Avalonia.Diagnostics.AutomationBridge.Session;
 /// </remarks>
 public sealed class AutomationBridgeSession : IDisposable
 {
-    private readonly AutomationRootRegistry _rootRegistry;
+    private readonly ITopLevelPeerSource _peerSource;
     private readonly AutomationHandleRegistry _handleRegistry = new();
     private bool _disposed;
 
     /// <summary>
-    /// Initialises a new session that reads roots from <paramref name="rootRegistry"/>.
+    /// Initialises a new session backed by <paramref name="peerSource"/>.
     /// </summary>
-    /// <param name="rootRegistry">
-    /// The shared registry of top-level automation roots.  Must not be null.
+    /// <param name="peerSource">
+    /// The live source of top-level automation root peers.  Must not be null.
     /// </param>
-    public AutomationBridgeSession(AutomationRootRegistry rootRegistry)
+    public AutomationBridgeSession(ITopLevelPeerSource peerSource)
     {
-        _rootRegistry = rootRegistry ?? throw new ArgumentNullException(nameof(rootRegistry));
+        _peerSource = peerSource ?? throw new ArgumentNullException(nameof(peerSource));
     }
 
     /// <summary>
@@ -53,7 +54,7 @@ public sealed class AutomationBridgeSession : IDisposable
     {
         ThrowIfDisposed();
 
-        var roots = _rootRegistry.Roots;
+        var roots = _peerSource.GetPeers();
         var result = new NodeSummaryDto[roots.Count];
 
         for (var i = 0; i < roots.Count; i++)
@@ -99,8 +100,7 @@ public sealed class AutomationBridgeSession : IDisposable
         if (!_handleRegistry.TryGetPeer(handle, out var peer))
             return null;
 
-        var rootId = ResolveRootId(peer, fallback: handle);
-        return AutomationNodeSummaryBuilder.Build(peer, handle, rootId);
+        return SummarizePeer(peer);
     }
 
     /// <summary>
@@ -116,6 +116,38 @@ public sealed class AutomationBridgeSession : IDisposable
         _handleRegistry.Invalidate(peer);
     }
 
+    internal bool TryGetRootPeer(string handle, [NotNullWhen(true)] out AutomationPeer? peer)
+    {
+        ThrowIfDisposed();
+
+        if (!_handleRegistry.TryGetPeer(handle, out peer))
+            return false;
+
+        if (IsCurrentRoot(peer))
+            return true;
+
+        peer = null;
+        return false;
+    }
+
+    internal string GetOrAssignHandle(AutomationPeer peer)
+    {
+        ThrowIfDisposed();
+
+        return IsCurrentRoot(peer)
+            ? _handleRegistry.GetOrAssignRootHandle(peer)
+            : _handleRegistry.GetOrAssignNodeHandle(peer);
+    }
+
+    internal NodeSummaryDto SummarizePeer(AutomationPeer peer)
+    {
+        ThrowIfDisposed();
+
+        var handle = GetOrAssignHandle(peer);
+        var rootId = ResolveRootId(peer, handle);
+        return AutomationNodeSummaryBuilder.Build(peer, handle, rootId);
+    }
+
     /// <summary>Disposes the session, releasing all held state.</summary>
     public void Dispose() => _disposed = true;
 
@@ -125,28 +157,33 @@ public sealed class AutomationBridgeSession : IDisposable
 
     private string ResolveRootId(AutomationPeer peer, string fallback)
     {
-        // If the peer is itself a registered root, its own handle is the rootId.
-        var roots = _rootRegistry.Roots;
-        for (var i = 0; i < roots.Count; i++)
-        {
-            if (ReferenceEquals(roots[i], peer))
-            {
-                return _handleRegistry.TryGetHandle(peer, out var selfHandle)
-                    ? selfHandle
-                    : fallback;
-            }
-        }
+        // If the peer is itself a current root, its own handle is the rootId.
+        if (IsCurrentRoot(peer))
+            return _handleRegistry.GetOrAssignRootHandle(peer);
 
-        // Walk the automation root to find a registered root peer.
+        // Walk the automation tree to find a root that owns this peer.
         var automationRoot = peer.GetAutomationRoot();
         if (automationRoot is not null
             && !ReferenceEquals(automationRoot, peer)
-            && _handleRegistry.TryGetHandle(automationRoot, out var rootHandle))
+            && IsCurrentRoot(automationRoot))
         {
-            return rootHandle;
+            return _handleRegistry.GetOrAssignRootHandle(automationRoot);
         }
 
         return fallback;
+    }
+
+    private bool IsCurrentRoot(AutomationPeer peer)
+    {
+        var roots = _peerSource.GetPeers();
+
+        for (var i = 0; i < roots.Count; i++)
+        {
+            if (ReferenceEquals(roots[i], peer))
+                return true;
+        }
+
+        return false;
     }
 
     private void ThrowIfDisposed()
