@@ -43,5 +43,9 @@ internal static class AutomationBridgeJsonConnection
         {
             return BridgeResponse.Failure(BridgeErrorCode.InvalidRequest, e.Message);
         }
+        catch (Exception e)
+        {
+            return BridgeResponse.Failure(BridgeErrorCode.InternalError, e.Message);
+        }
     }
 }

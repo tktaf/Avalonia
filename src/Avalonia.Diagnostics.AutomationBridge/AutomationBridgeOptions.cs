@@ -23,7 +23,7 @@ public sealed class AutomationBridgeOptions
     /// creating a circular dependency between the options type and the service type.
     /// Production code rarely needs this hook.
     /// </remarks>
-    public Action<Hosting.AutomationBridgeHostedService>? OnServiceRegistered { get; set; }
+    public Action<Hosting.IAutomationBridgeHostedService>? OnServiceRegistered { get; set; }
 
     /// <summary>
     /// Optional root-peer factory used to create the bridge session's live root source.

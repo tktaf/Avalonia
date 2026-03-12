@@ -69,13 +69,72 @@ public sealed class HostedServiceTransportTests
         Assert.NotNull(invoke.Delta);
     }
 
+    [Fact]
+    public async Task Listener_ProcessesRootsRequests_WhenPeerGetterThrows()
+    {
+        var root = new StubRootAutomationPeer
+        {
+            ControlType = Avalonia.Automation.Peers.AutomationControlType.Window,
+            NameException = new InvalidOperationException("boom")
+        };
+
+        using var service = StartService(root);
+        var response = await SendAsync(
+            service.BoundPort,
+            new BridgeRequest { Action = BridgeAction.Roots, RequestId = "roots-throwing-peer" });
+
+        Assert.True(response.Ok);
+        Assert.Equal("roots-throwing-peer", response.RequestId);
+
+        var node = Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes));
+        Assert.Equal("window", node.Role);
+        Assert.Null(node.Name);
+    }
+
+    [Fact]
+    public async Task Listener_ReturnsStructuredError_WhenActionProviderThrows()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        var item = new StubAutomationPeer { Name = "Pick me" };
+        item.RegisterProvider<ISelectionItemProvider>(new ThrowingSelectionItemProvider());
+        root.AddChild(item);
+
+        using var service = StartService(root);
+        var roots = await SendAsync(service.BoundPort, new BridgeRequest { Action = BridgeAction.Roots });
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+        var query = await SendAsync(
+            service.BoundPort,
+            new BridgeRequest
+            {
+                Action = BridgeAction.Query,
+                RootId = rootId,
+                Selector = new SelectorDto { Name = "Pick me" },
+            });
+
+        var nodeId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(query.Nodes)).Id;
+        var select = await SendAsync(
+            service.BoundPort,
+            new BridgeRequest
+            {
+                Action = BridgeAction.Select,
+                NodeId = nodeId,
+                RequestId = "select-throw",
+            });
+
+        Assert.False(select.Ok);
+        Assert.Equal("select-throw", select.RequestId);
+        Assert.Equal(BridgeErrorCode.ActionFailed, select.Error!.Code);
+    }
+
     private static AutomationBridgeHostedService StartService(StubRootAutomationPeer root)
     {
-        var service = new AutomationBridgeHostedService(new AutomationBridgeOptions
-        {
-            Port = 0,
-            PeerSourceFactory = () => new[] { root },
-        });
+        var service = new AutomationBridgeHostedService(
+            new AutomationBridgeOptions
+            {
+                Port = 0,
+                PeerSourceFactory = () => new[] { root },
+            },
+            new InlineRequestInvoker());
 
         service.Start();
         return service;
@@ -103,5 +162,22 @@ public sealed class HostedServiceTransportTests
         public int CallCount { get; private set; }
 
         public void Invoke() => CallCount++;
+    }
+
+    private sealed class InlineRequestInvoker : IAutomationBridgeRequestInvoker
+    {
+        public BridgeResponse Invoke(Func<BridgeResponse> callback) => callback();
+    }
+
+    private sealed class ThrowingSelectionItemProvider : ISelectionItemProvider
+    {
+        public bool IsSelected => false;
+        public ISelectionProvider? SelectionContainer => null;
+
+        public void AddToSelection() { }
+
+        public void RemoveFromSelection() { }
+
+        public void Select() => throw new InvalidOperationException("selection exploded");
     }
 }

@@ -17,8 +17,8 @@ public sealed class DeltaSerializationTests
             Focus = "n55",
             Updated =
             [
-                new NodePatchDto { Id = "n42", Enabled = false },
-                new NodePatchDto { Id = "n55", Focused = true }
+                new NodePatchDto { Id = "n42", Enabled = false, Selected = true },
+                new NodePatchDto { Id = "n55", Focused = true, Metadata = new Dictionary<string, string> { ["Key"] = "value" } }
             ],
             Added = [],
             Removed = []
@@ -33,8 +33,10 @@ public sealed class DeltaSerializationTests
         Assert.Equal(2, restored.Updated.Length);
         Assert.Equal("n42", restored.Updated[0].Id);
         Assert.False(restored.Updated[0].Enabled);
+        Assert.True(restored.Updated[0].Selected);
         Assert.Equal("n55", restored.Updated[1].Id);
         Assert.True(restored.Updated[1].Focused);
+        Assert.Equal("value", restored.Updated[1].Metadata!["Key"]);
         Assert.Empty(restored.Added);
         Assert.Empty(restored.Removed);
     }
@@ -49,7 +51,7 @@ public sealed class DeltaSerializationTests
             Focus = "n55",
             Updated =
             [
-                new NodePatchDto { Id = "n42", Enabled = false },
+                new NodePatchDto { Id = "n42", Enabled = false, Selected = true },
                 new NodePatchDto { Id = "n55", Focused = true }
             ],
             Added = [],
@@ -69,6 +71,7 @@ public sealed class DeltaSerializationTests
         var first = updated[0];
         Assert.Equal("n42", first.GetProperty("id").GetString());
         Assert.False(first.GetProperty("enabled").GetBoolean());
+        Assert.True(first.GetProperty("selected").GetBoolean());
 
         var second = updated[1];
         Assert.Equal("n55", second.GetProperty("id").GetString());
@@ -115,6 +118,10 @@ public sealed class DeltaSerializationTests
         Assert.False(root.TryGetProperty("focused", out _));
         Assert.False(root.TryGetProperty("offscreen", out _));
         Assert.False(root.TryGetProperty("name", out _));
+        Assert.False(root.TryGetProperty("selected", out _));
+        Assert.False(root.TryGetProperty("expanded", out _));
+        Assert.False(root.TryGetProperty("checked", out _));
+        Assert.False(root.TryGetProperty("metadata", out _));
     }
 
     [Fact]

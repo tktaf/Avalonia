@@ -1,5 +1,6 @@
 using Avalonia.Diagnostics.AutomationBridge;
 using Avalonia.Diagnostics.AutomationBridge.Hosting;
+using Avalonia.Controls.ApplicationLifetimes;
 using Xunit;
 
 namespace Avalonia.Diagnostics.AutomationBridge.Tests.Hosting;
@@ -29,7 +30,7 @@ public sealed class ActivationTests
     [Fact]
     public void WithDevAutomationBridge_RegistersService_ViaCallback()
     {
-        AutomationBridgeHostedService? capturedService = null;
+        IAutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
             Port = 0,
@@ -47,9 +48,10 @@ public sealed class ActivationTests
     [Fact]
     public void WithDevAutomationBridge_ServiceNotRunning_BeforeSetupCompletes()
     {
-        AutomationBridgeHostedService? capturedService = null;
+        IAutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
+            Port = 0,
             OnServiceRegistered = svc => capturedService = svc
         };
 
@@ -67,9 +69,10 @@ public sealed class ActivationTests
     [Fact]
     public void WithDevAutomationBridge_ServiceStarts_WhenAfterSetupFires()
     {
-        AutomationBridgeHostedService? capturedService = null;
+        IAutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
+            Port = 0,
             OnServiceRegistered = svc => capturedService = svc
         };
 
@@ -86,7 +89,7 @@ public sealed class ActivationTests
     [Fact]
     public void WithDevAutomationBridge_ServiceRespectsSuppliedPort()
     {
-        AutomationBridgeHostedService? capturedService = null;
+        IAutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
             Port = 19317,
@@ -106,7 +109,7 @@ public sealed class ActivationTests
     [Fact]
     public void WithoutWithDevAutomationBridge_NoServiceCreated()
     {
-        AutomationBridgeHostedService? capturedService = null;
+        IAutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
             Port = 0,
@@ -127,9 +130,10 @@ public sealed class ActivationTests
     [Fact]
     public void WithDevAutomationBridge_CoexistsWith_OtherAfterSetupCallbacks()
     {
-        AutomationBridgeHostedService? capturedService = null;
+        IAutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
+            Port = 0,
             OnServiceRegistered = svc => capturedService = svc
         };
         var otherCallbackFired = false;
@@ -148,7 +152,7 @@ public sealed class ActivationTests
     [Fact]
     public void WithDevAutomationBridge_AfterOtherAfterSetup_BothFire()
     {
-        AutomationBridgeHostedService? capturedService = null;
+        IAutomationBridgeHostedService? capturedService = null;
         var opts = new AutomationBridgeOptions
         {
             Port = 0,
@@ -170,7 +174,7 @@ public sealed class ActivationTests
     [Fact]
     public void WithDevAutomationBridge_DefaultOptions_UsesDefaultPort()
     {
-        AutomationBridgeHostedService? capturedService = null;
+        IAutomationBridgeHostedService? capturedService = null;
         // Use an explicit options instance (with all defaults) to capture the service.
         var opts = new AutomationBridgeOptions
         {
@@ -182,6 +186,19 @@ public sealed class ActivationTests
 
         // Default port is 9317 per AutomationBridgeOptions.
         Assert.Equal(9317, capturedService!.Options.Port);
+    }
+
+    [Fact]
+    public void RegisterStopOnExit_StopsService_WhenLifetimeExits()
+    {
+        var lifetime = new StubControlledApplicationLifetime();
+        using var service = new AutomationBridgeHostedService(new AutomationBridgeOptions { Port = 0 });
+        service.Start();
+
+        AutomationBridgeLifetimeRegistration.RegisterStopOnExit(service, lifetime);
+        lifetime.RaiseExit();
+
+        Assert.False(service.IsRunning);
     }
 
     // ---------------------------------------------------------------------------
@@ -236,4 +253,18 @@ public sealed class ActivationTests
     /// <see cref="AppBuilder.Configure{TApp}()"/>.
     /// </summary>
     private sealed class StubApplication : Application { }
+
+#pragma warning disable CS0067
+    private sealed class StubControlledApplicationLifetime : IControlledApplicationLifetime
+    {
+        public event EventHandler<ControlledApplicationLifetimeStartupEventArgs>? Startup;
+        public event EventHandler<ControlledApplicationLifetimeExitEventArgs>? Exit;
+
+        public void Shutdown(int exitCode = 0)
+        {
+        }
+
+        public void RaiseExit() => Exit?.Invoke(this, new ControlledApplicationLifetimeExitEventArgs(0));
+    }
+#pragma warning restore CS0067
 }

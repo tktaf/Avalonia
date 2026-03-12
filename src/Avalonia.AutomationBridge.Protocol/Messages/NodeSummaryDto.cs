@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
 
 namespace Avalonia.AutomationBridge.Protocol.Messages;
@@ -22,30 +23,52 @@ public sealed class NodeSummaryDto
 
     /// <summary>Accessible name as exposed by the automation peer. May be null.</summary>
     [JsonPropertyName("name")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; init; }
 
     /// <summary>Avalonia AutomationProperties.AutomationId value. May be null.</summary>
     [JsonPropertyName("automationId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? AutomationId { get; init; }
 
     /// <summary>Simple class name of the underlying control. May be null.</summary>
     [JsonPropertyName("className")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? ClassName { get; init; }
 
     /// <summary>Whether the element accepts interaction.</summary>
     [JsonPropertyName("enabled")]
-    public bool Enabled { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Enabled { get; init; }
 
     /// <summary>Whether the element currently holds keyboard focus.</summary>
     [JsonPropertyName("focused")]
-    public bool Focused { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Focused { get; init; }
 
     /// <summary>Whether the element is scrolled or clipped out of the visible area.</summary>
     [JsonPropertyName("offscreen")]
-    public bool Offscreen { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Offscreen { get; init; }
+
+    /// <summary>Whether the element is currently selected, when selection semantics are available.</summary>
+    [JsonPropertyName("selected")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Selected { get; init; }
+
+    /// <summary>Whether the element is currently expanded, when expand/collapse semantics are available.</summary>
+    [JsonPropertyName("expanded")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Expanded { get; init; }
+
+    /// <summary>Whether the element is currently checked, when toggle semantics are available.</summary>
+    [JsonPropertyName("checked")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? Checked { get; init; }
 
     /// <summary>Current value string for editable elements (text box, slider, etc.). May be null.</summary>
     [JsonPropertyName("value")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Value { get; init; }
 
     /// <summary>
@@ -53,6 +76,7 @@ public sealed class NodeSummaryDto
     /// bounds are not available.
     /// </summary>
     [JsonPropertyName("bounds")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double[]? Bounds
     {
         get => _bounds;
@@ -65,5 +89,11 @@ public sealed class NodeSummaryDto
 
     /// <summary>Actions the node supports: invoke, setValue, toggle, select, expand, collapse, etc.</summary>
     [JsonPropertyName("actions")]
-    public required string[] Actions { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? Actions { get; init; }
+
+    /// <summary>Structured metadata extracted from the automation surface when available.</summary>
+    [JsonPropertyName("metadata")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? Metadata { get; init; }
 }

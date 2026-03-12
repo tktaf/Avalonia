@@ -46,11 +46,7 @@ internal sealed class AutomationDeltaBuilder : IDisposable
         if (_revision != startingRevision)
             return _lastDelta;
 
-        return PublishDelta(
-            updated: new[] { BuildPatch(peer) },
-            added: Array.Empty<string>(),
-            removed: Array.Empty<string>(),
-            focus: null);
+        return EmptyDelta(startingRevision);
     }
 
     public BridgeResponse GetDelta(long? sinceRevision, string? requestId = null)
@@ -173,7 +169,11 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             Focused = summary.Focused,
             Name = summary.Name,
             Offscreen = summary.Offscreen,
+            Selected = summary.Selected,
+            Expanded = summary.Expanded,
+            Checked = summary.Checked,
             Value = summary.Value,
+            Metadata = summary.Metadata,
         };
     }
 
@@ -192,6 +192,33 @@ internal sealed class AutomationDeltaBuilder : IDisposable
             {
                 Id = id,
                 Value = peer.GetProvider<IValueProvider>()?.Value,
+            };
+        }
+
+        if (property == SelectionItemPatternIdentifiers.IsSelectedProperty)
+        {
+            return new NodePatchDto
+            {
+                Id = id,
+                Selected = AutomationNodeSummaryBuilder.GetSelected(peer),
+            };
+        }
+
+        if (property == ExpandCollapsePatternIdentifiers.ExpandCollapseStateProperty)
+        {
+            return new NodePatchDto
+            {
+                Id = id,
+                Expanded = AutomationNodeSummaryBuilder.GetExpanded(peer),
+            };
+        }
+
+        if (property == TogglePatternIdentifiers.ToggleStateProperty)
+        {
+            return new NodePatchDto
+            {
+                Id = id,
+                Checked = AutomationNodeSummaryBuilder.GetChecked(peer),
             };
         }
 

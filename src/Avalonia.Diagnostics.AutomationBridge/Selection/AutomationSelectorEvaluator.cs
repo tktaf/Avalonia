@@ -37,14 +37,15 @@ public static class AutomationSelectorEvaluator
         selector ??= new SelectorDto();
 
         var scopePeer = rootPeer;
-        if (!string.IsNullOrEmpty(selector.Within))
+        var scopeHandle = selector.ContainerId ?? selector.Within;
+        if (!string.IsNullOrEmpty(scopeHandle))
         {
-            if (!session.TryGetPeer(selector.Within, out var withinPeer)
+            if (!session.TryGetPeer(scopeHandle, out var withinPeer)
                 || !IsDescendantOrSelf(rootPeer, withinPeer))
             {
                 return BridgeResponse.Failure(
                     BridgeErrorCode.NodeNotFound,
-                    $"Node '{selector.Within}' was not found within root '{rootId}'.",
+                    $"Node '{scopeHandle}' was not found within root '{rootId}'.",
                     requestId);
             }
 
@@ -66,7 +67,7 @@ public static class AutomationSelectorEvaluator
             }
 
             return BridgeResponse.WithNodes(
-                new[] { session.SummarizePeer(matches[nth]) },
+                NodeSummaryProjection.Apply(new[] { session.SummarizePeer(matches[nth]) }, selector.Fields),
                 requestId);
         }
 
@@ -88,7 +89,7 @@ public static class AutomationSelectorEvaluator
         }
 
         return BridgeResponse.WithNodes(
-            matches.Take(limit).Select(session.SummarizePeer).ToArray(),
+            NodeSummaryProjection.Apply(matches.Take(limit).Select(session.SummarizePeer).ToArray(), selector.Fields),
             requestId);
     }
 
@@ -107,8 +108,9 @@ public static class AutomationSelectorEvaluator
 
     private static bool Matches(AutomationPeer peer, AutomationPeer scopeRoot, SelectorDto selector)
     {
-        if (selector.Id is not null
-            && !string.Equals(peer.GetAutomationId(), selector.Id, StringComparison.Ordinal))
+        var automationId = selector.AutomationId ?? selector.Id;
+        if (automationId is not null
+            && !string.Equals(peer.GetAutomationId(), automationId, StringComparison.Ordinal))
         {
             return false;
         }
@@ -148,6 +150,25 @@ public static class AutomationSelectorEvaluator
         }
 
         if (selector.Enabled is bool enabled && peer.IsEnabled() != enabled)
+        {
+            return false;
+        }
+
+        if (selector.Selected is bool selected
+            && AutomationNodeSummaryBuilder.GetSelected(peer) != selected)
+        {
+            return false;
+        }
+
+        if (selector.Visible is bool visible
+            && peer.IsOffscreen() == visible)
+        {
+            return false;
+        }
+
+        if (selector.HasAction is not null
+            && !AutomationNodeSummaryBuilder.GetActions(peer)
+                .Contains(selector.HasAction, StringComparer.OrdinalIgnoreCase))
         {
             return false;
         }

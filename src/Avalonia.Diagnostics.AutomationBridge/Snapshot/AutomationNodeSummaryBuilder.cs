@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.AutomationBridge.Protocol.Messages;
@@ -20,6 +22,22 @@ namespace Avalonia.Diagnostics.AutomationBridge.Snapshot;
 /// </remarks>
 public static class AutomationNodeSummaryBuilder
 {
+    private static readonly Regex s_structuredNameEntryPattern =
+        new(@"(?:(?<=^)|(?<=, ))(?<key>[A-Za-z_][A-Za-z0-9_]*) = ", RegexOptions.Compiled);
+
+    private static readonly string[] s_preferredLabelKeys =
+    [
+        "DisplayName",
+        "Name",
+        "Title",
+        "Label",
+        "Text",
+        "Header",
+        "AssetName",
+        "Key",
+        "Id",
+    ];
+
     /// <summary>
     /// Builds a <see cref="NodeSummaryDto"/> from <paramref name="peer"/> using the supplied
     /// pre-assigned handle strings.
@@ -33,24 +51,28 @@ public static class AutomationNodeSummaryBuilder
     /// <returns>A compact, protocol-ready summary of the node.</returns>
     public static NodeSummaryDto Build(AutomationPeer peer, string handle, string rootId)
     {
-        var rect = peer.GetBoundingRectangle();
-        // Always emit bounds; an all-zero rect is still a valid (if unpositioned) answer.
-        var bounds = new double[] { rect.X, rect.Y, rect.Width, rect.Height };
+        var bounds = TryGetBounds(peer);
+        var actions = GetActions(peer);
+        var (name, metadata) = BuildNameAndMetadata(TryGetString(peer.GetName));
 
         return new NodeSummaryDto
         {
             Id = handle,
             RootId = rootId,
-            Role = GetRole(peer.GetAutomationControlType()),
-            Name = NullIfEmpty(peer.GetName()),
-            AutomationId = NullIfEmpty(peer.GetAutomationId()),
-            ClassName = NullIfEmpty(peer.GetClassName()),
-            Enabled = peer.IsEnabled(),
-            Focused = peer.HasKeyboardFocus(),
-            Offscreen = peer.IsOffscreen(),
-            Value = peer.GetProvider<IValueProvider>()?.Value,
+            Role = TryGetRole(peer),
+            Name = name,
+            AutomationId = TryGetString(peer.GetAutomationId),
+            ClassName = TryGetString(peer.GetClassName),
+            Enabled = TryGetBool(peer.IsEnabled),
+            Focused = TryGetBool(peer.HasKeyboardFocus),
+            Offscreen = TryGetBool(peer.IsOffscreen),
+            Selected = GetSelected(peer),
+            Expanded = GetExpanded(peer),
+            Checked = GetChecked(peer),
+            Value = TryGetValue(peer),
             Bounds = bounds,
-            Actions = GetActions(peer),
+            Actions = actions,
+            Metadata = metadata,
         };
     }
 
@@ -112,32 +134,65 @@ public static class AutomationNodeSummaryBuilder
     // Action derivation
     // -------------------------------------------------------------------------
 
-    private static string[] GetActions(AutomationPeer peer)
+    internal static string[] GetActions(AutomationPeer peer)
     {
         var actions = new List<string>();
 
-        if (peer.GetProvider<IInvokeProvider>() is not null)
+        if (TryGetProvider<IInvokeProvider>(peer) is not null)
             actions.Add("invoke");
 
-        if (peer.GetProvider<IValueProvider>() is { IsReadOnly: false })
+        if (TryGetProvider<IValueProvider>(peer) is { IsReadOnly: false })
             actions.Add("setValue");
 
-        if (peer.GetProvider<IToggleProvider>() is not null)
+        if (TryGetProvider<IToggleProvider>(peer) is not null)
             actions.Add("toggle");
 
-        if (peer.GetProvider<ISelectionItemProvider>() is not null)
+        if (TryGetProvider<ISelectionItemProvider>(peer) is not null)
             actions.Add("select");
 
-        if (peer.GetProvider<IExpandCollapseProvider>() is not null)
+        if (TryGetProvider<IExpandCollapseProvider>(peer) is not null)
         {
             actions.Add("expand");
             actions.Add("collapse");
         }
 
-        if (peer.IsKeyboardFocusable())
+        if (TryGetBool(peer.IsKeyboardFocusable))
             actions.Add("setFocus");
 
         return actions.ToArray();
+    }
+
+    internal static bool? GetSelected(AutomationPeer peer)
+    {
+        var provider = TryGetProvider<ISelectionItemProvider>(peer);
+        return provider?.IsSelected;
+    }
+
+    internal static bool? GetExpanded(AutomationPeer peer)
+    {
+        var provider = TryGetProvider<IExpandCollapseProvider>(peer);
+        return provider?.ExpandCollapseState switch
+        {
+            null => null,
+            Automation.ExpandCollapseState.Expanded => true,
+            Automation.ExpandCollapseState.PartiallyExpanded => true,
+            Automation.ExpandCollapseState.Collapsed => false,
+            Automation.ExpandCollapseState.LeafNode => false,
+            _ => null,
+        };
+    }
+
+    internal static bool? GetChecked(AutomationPeer peer)
+    {
+        var provider = TryGetProvider<IToggleProvider>(peer);
+        return provider?.ToggleState switch
+        {
+            null => null,
+            ToggleState.On => true,
+            ToggleState.Off => false,
+            ToggleState.Indeterminate => null,
+            _ => null,
+        };
     }
 
     // -------------------------------------------------------------------------
@@ -146,4 +201,145 @@ public static class AutomationNodeSummaryBuilder
 
     private static string? NullIfEmpty(string? value)
         => string.IsNullOrEmpty(value) ? null : value;
+
+    private static string TryGetRole(AutomationPeer peer)
+    {
+        try
+        {
+            return GetRole(peer.GetAutomationControlType());
+        }
+        catch
+        {
+            return "custom";
+        }
+    }
+
+    private static string? TryGetString(Func<string?> getter)
+    {
+        try
+        {
+            return NullIfEmpty(getter());
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool TryGetBool(Func<bool> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string? TryGetValue(AutomationPeer peer)
+    {
+        try
+        {
+            return TryGetProvider<IValueProvider>(peer)?.Value;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static TProvider? TryGetProvider<TProvider>(AutomationPeer peer)
+        where TProvider : class
+    {
+        try
+        {
+            return peer.GetProvider<TProvider>();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static double[]? TryGetBounds(AutomationPeer peer)
+    {
+        try
+        {
+            var rect = peer.GetBoundingRectangle();
+            return [rect.X, rect.Y, rect.Width, rect.Height];
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static (string? Name, IReadOnlyDictionary<string, string>? Metadata) BuildNameAndMetadata(string? rawName)
+    {
+        if (string.IsNullOrEmpty(rawName))
+            return (null, null);
+
+        if (!TryParseStructuredObjectName(rawName, out var metadata))
+            return (rawName, null);
+
+        return (ChooseDisplayName(metadata!) ?? rawName, metadata);
+    }
+
+    private static bool TryParseStructuredObjectName(
+        string rawName,
+        out IReadOnlyDictionary<string, string>? metadata)
+    {
+        metadata = null;
+        var separatorIndex = rawName.IndexOf(" { ", StringComparison.Ordinal);
+        if (separatorIndex <= 0 || !rawName.EndsWith(" }", StringComparison.Ordinal))
+            return false;
+
+        var sourceType = rawName[..separatorIndex];
+        var body = rawName[(separatorIndex + 3)..^2];
+        var matches = s_structuredNameEntryPattern.Matches(body);
+        if (matches.Count == 0)
+            return false;
+
+        var parsed = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["sourceType"] = sourceType,
+        };
+
+        for (var i = 0; i < matches.Count; i++)
+        {
+            var match = matches[i];
+            var key = match.Groups["key"].Value;
+            var valueStart = match.Index + match.Length;
+            var valueEnd = i + 1 < matches.Count
+                ? matches[i + 1].Index - 2
+                : body.Length;
+            var value = body[valueStart..valueEnd].Trim();
+            parsed[key] = value;
+        }
+
+        metadata = parsed;
+        return true;
+    }
+
+    private static string? ChooseDisplayName(IReadOnlyDictionary<string, string> metadata)
+    {
+        foreach (var key in s_preferredLabelKeys)
+        {
+            if (metadata.TryGetValue(key, out var value) && !string.IsNullOrWhiteSpace(value))
+                return value;
+        }
+
+        foreach (var pair in metadata)
+        {
+            if (pair.Key == "sourceType")
+                continue;
+
+            if (!string.IsNullOrWhiteSpace(pair.Value))
+                return pair.Value;
+        }
+
+        return null;
+    }
 }

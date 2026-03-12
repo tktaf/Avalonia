@@ -1,4 +1,5 @@
 using Avalonia.Diagnostics.AutomationBridge.Hosting;
+using Avalonia.Controls.ApplicationLifetimes;
 
 namespace Avalonia.Diagnostics.AutomationBridge;
 
@@ -34,6 +35,12 @@ public static class AutomationBridgeAppBuilderExtensions
         // back on the options object.
         opts.OnServiceRegistered?.Invoke(service);
 
-        return builder.AfterSetup(_ => service.Start());
+        return builder.AfterSetup(appBuilder =>
+        {
+            service.Start();
+            AutomationBridgeLifetimeRegistration.RegisterStopOnExit(
+                service,
+                appBuilder.Instance?.ApplicationLifetime as IControlledApplicationLifetime);
+        });
     }
 }

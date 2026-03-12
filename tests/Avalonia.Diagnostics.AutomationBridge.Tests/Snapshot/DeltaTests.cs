@@ -105,7 +105,7 @@ public sealed class DeltaTests
     }
 
     [Fact]
-    public void MutatingActions_BumpRevisions()
+    public void MutatingActions_ReportAcceptedCompletion_WhenNoImmediateDeltaWasPublished()
     {
         var root = new StubRootAutomationPeer { ControlType = AutomationControlType.Window };
         var child = new StubAutomationPeer();
@@ -122,7 +122,11 @@ public sealed class DeltaTests
         var delta = Assert.IsType<DeltaDto>(response.Delta);
 
         Assert.Equal(1, provider.CallCount);
-        Assert.Equal(1, delta.Revision);
+        Assert.Equal(BridgeActionCompletionState.Accepted, response.Completion?.State);
+        Assert.Equal(0, delta.Revision);
+        Assert.Empty(delta.Updated);
+        Assert.Empty(delta.Added);
+        Assert.Empty(delta.Removed);
     }
 
     [Fact]

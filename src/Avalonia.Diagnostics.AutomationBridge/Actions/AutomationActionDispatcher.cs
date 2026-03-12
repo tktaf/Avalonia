@@ -36,27 +36,40 @@ public static class AutomationActionDispatcher
         var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
         var startingRevision = deltaBuilder.CurrentRevision;
 
-        var response = request.Action switch
+        try
         {
-            BridgeAction.Invoke => Invoke(peer, request),
-            BridgeAction.SetValue => SetValue(peer, request),
-            BridgeAction.Toggle => Toggle(peer, request),
-            BridgeAction.Select => Select(peer, request),
-            BridgeAction.Expand => Expand(peer, request),
-            BridgeAction.Collapse => Collapse(peer, request),
-            BridgeAction.SetFocus => SetFocus(peer, request),
-            BridgeAction.ShowContextMenu => ShowContextMenu(peer, request),
-            BridgeAction.Scroll => Scroll(peer, request),
-            BridgeAction.SetScrollPercent => SetScrollPercent(peer, request),
-            _ => Unsupported(request, $"Action '{request.Action}' is not supported."),
-        };
+            var response = request.Action switch
+            {
+                BridgeAction.Invoke => Invoke(peer, request),
+                BridgeAction.SetValue => SetValue(peer, request),
+                BridgeAction.Toggle => Toggle(peer, request),
+                BridgeAction.Select => Select(peer, request),
+                BridgeAction.Expand => Expand(peer, request),
+                BridgeAction.Collapse => Collapse(peer, request),
+                BridgeAction.SetFocus => SetFocus(peer, request),
+                BridgeAction.ShowContextMenu => ShowContextMenu(peer, request),
+                BridgeAction.Scroll => Scroll(peer, request),
+                BridgeAction.SetScrollPercent => SetScrollPercent(peer, request),
+                _ => Unsupported(request, $"Action '{request.Action}' is not supported."),
+            };
 
-        if (!response.Ok)
-            return response;
+            if (!response.Ok)
+                return response;
 
-        return BridgeResponse.WithDelta(
-            deltaBuilder.CompleteAction(peer, startingRevision),
-            request.RequestId);
+            var delta = deltaBuilder.CompleteAction(peer, startingRevision);
+            var completionState = delta.Revision == startingRevision
+                ? BridgeActionCompletionState.Accepted
+                : BridgeActionCompletionState.Completed;
+
+            return BridgeResponse.WithCompletion(delta, completionState, request.RequestId);
+        }
+        catch (Exception e)
+        {
+            return BridgeResponse.Failure(
+                BridgeErrorCode.ActionFailed,
+                $"Action '{request.Action}' failed: {e.Message}",
+                request.RequestId);
+        }
     }
 
     private static BridgeResponse Invoke(Avalonia.Automation.Peers.AutomationPeer peer, BridgeRequest request)

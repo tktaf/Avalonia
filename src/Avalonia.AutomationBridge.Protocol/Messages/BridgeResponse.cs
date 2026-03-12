@@ -7,6 +7,7 @@ public sealed class BridgeResponse
 {
     /// <summary>Correlation identifier echoed from <see cref="BridgeRequest.RequestId"/>. May be null.</summary>
     [JsonPropertyName("requestId")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? RequestId { get; init; }
 
     /// <summary>True when the action completed without error.</summary>
@@ -15,6 +16,7 @@ public sealed class BridgeResponse
 
     /// <summary>Error payload when <see cref="Ok"/> is false. Null on success.</summary>
     [JsonPropertyName("error")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ErrorDto? Error { get; init; }
 
     /// <summary>
@@ -22,6 +24,7 @@ public sealed class BridgeResponse
     /// Empty array when the action returned no nodes.
     /// </summary>
     [JsonPropertyName("nodes")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public NodeSummaryDto[]? Nodes { get; init; }
 
     /// <summary>
@@ -29,7 +32,15 @@ public sealed class BridgeResponse
     /// and watch events.  Null for read-only requests.
     /// </summary>
     [JsonPropertyName("delta")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public DeltaDto? Delta { get; init; }
+
+    /// <summary>
+    /// Completion state for successful mutating actions. Null for read-only requests and failures.
+    /// </summary>
+    [JsonPropertyName("completion")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ActionCompletionDto? Completion { get; init; }
 
     // --- Factory helpers -------------------------------------------------
 
@@ -44,6 +55,19 @@ public sealed class BridgeResponse
     /// <summary>Creates a successful response containing a revision delta.</summary>
     public static BridgeResponse WithDelta(DeltaDto delta, string? requestId = null) =>
         new() { RequestId = requestId, Ok = true, Delta = delta };
+
+    /// <summary>Creates a successful response containing both a revision delta and completion state.</summary>
+    public static BridgeResponse WithCompletion(
+        DeltaDto delta,
+        string completionState,
+        string? requestId = null) =>
+        new()
+        {
+            RequestId = requestId,
+            Ok = true,
+            Delta = delta,
+            Completion = new ActionCompletionDto { State = completionState },
+        };
 
     /// <summary>Creates an error response using the supplied typed error.</summary>
     public static BridgeResponse Failure(ErrorDto error, string? requestId = null) =>

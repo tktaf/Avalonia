@@ -14,6 +14,7 @@ public sealed class SelectorSerializationTests
         var original = new SelectorDto
         {
             Id = "SaveButton",
+            AutomationId = "SaveButton",
             Name = "Save",
             NameSubstring = false,
             Role = "button",
@@ -21,6 +22,11 @@ public sealed class SelectorSerializationTests
             Focused = null,
             Enabled = true,
             Within = "n10",
+            ContainerId = "n10",
+            Selected = true,
+            Visible = true,
+            HasAction = "invoke",
+            Fields = ["name", "selected"],
             Path = ["MainWindow", "toolbar"],
             Nth = 0
         };
@@ -30,6 +36,7 @@ public sealed class SelectorSerializationTests
 
         Assert.NotNull(restored);
         Assert.Equal(original.Id, restored.Id);
+        Assert.Equal(original.AutomationId, restored.AutomationId);
         Assert.Equal(original.Name, restored.Name);
         Assert.Equal(original.NameSubstring, restored.NameSubstring);
         Assert.Equal(original.Role, restored.Role);
@@ -37,6 +44,11 @@ public sealed class SelectorSerializationTests
         Assert.Null(restored.Focused);
         Assert.Equal(original.Enabled, restored.Enabled);
         Assert.Equal(original.Within, restored.Within);
+        Assert.Equal(original.ContainerId, restored.ContainerId);
+        Assert.Equal(original.Selected, restored.Selected);
+        Assert.Equal(original.Visible, restored.Visible);
+        Assert.Equal(original.HasAction, restored.HasAction);
+        Assert.Equal(original.Fields, restored.Fields);
         Assert.Equal(original.Path, restored.Path);
         Assert.Equal(0, restored.Nth);
     }
@@ -74,11 +86,17 @@ public sealed class SelectorSerializationTests
         var root = doc.RootElement;
 
         Assert.False(root.TryGetProperty("id", out _));
+        Assert.False(root.TryGetProperty("automationId", out _));
         Assert.False(root.TryGetProperty("name", out _));
         Assert.False(root.TryGetProperty("className", out _));
         Assert.False(root.TryGetProperty("focused", out _));
         Assert.False(root.TryGetProperty("enabled", out _));
         Assert.False(root.TryGetProperty("within", out _));
+        Assert.False(root.TryGetProperty("containerId", out _));
+        Assert.False(root.TryGetProperty("selected", out _));
+        Assert.False(root.TryGetProperty("visible", out _));
+        Assert.False(root.TryGetProperty("hasAction", out _));
+        Assert.False(root.TryGetProperty("fields", out _));
         Assert.False(root.TryGetProperty("path", out _));
         Assert.False(root.TryGetProperty("nth", out _));
     }

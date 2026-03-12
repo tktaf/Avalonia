@@ -22,9 +22,17 @@ public sealed class NodeSummarySerializationTests
             Enabled = true,
             Focused = false,
             Offscreen = false,
+            Selected = true,
+            Expanded = false,
+            Checked = null,
             Value = null,
             Bounds = [120, 40, 88, 32],
-            Actions = ["invoke"]
+            Actions = ["invoke"],
+            Metadata = new Dictionary<string, string>
+            {
+                ["DisplayName"] = "Save",
+                ["Key"] = "save-primary",
+            }
         };
 
         var json = JsonSerializer.Serialize(original, s_options);
@@ -40,9 +48,13 @@ public sealed class NodeSummarySerializationTests
         Assert.Equal(original.Enabled, restored.Enabled);
         Assert.Equal(original.Focused, restored.Focused);
         Assert.Equal(original.Offscreen, restored.Offscreen);
+        Assert.Equal(original.Selected, restored.Selected);
+        Assert.Equal(original.Expanded, restored.Expanded);
+        Assert.Equal(original.Checked, restored.Checked);
         Assert.Null(restored.Value);
         Assert.Equal(original.Bounds, restored.Bounds);
         Assert.Equal(original.Actions, restored.Actions);
+        Assert.Equal(original.Metadata, restored.Metadata);
     }
 
     [Fact]
@@ -59,9 +71,14 @@ public sealed class NodeSummarySerializationTests
             Enabled = true,
             Focused = false,
             Offscreen = false,
+            Selected = true,
             Value = null,
             Bounds = [120.0, 40.0, 88.0, 32.0],
-            Actions = ["invoke"]
+            Actions = ["invoke"],
+            Metadata = new Dictionary<string, string>
+            {
+                ["DisplayName"] = "Save",
+            }
         };
 
         var json = JsonSerializer.Serialize(node, s_options);
@@ -77,11 +94,13 @@ public sealed class NodeSummarySerializationTests
         Assert.True(root.GetProperty("enabled").GetBoolean());
         Assert.False(root.GetProperty("focused").GetBoolean());
         Assert.False(root.GetProperty("offscreen").GetBoolean());
+        Assert.True(root.GetProperty("selected").GetBoolean());
         // value is null so omitted under WhenWritingNull
         Assert.False(root.TryGetProperty("value", out _));
         var bounds = root.GetProperty("bounds");
         Assert.Equal(4, bounds.GetArrayLength());
         Assert.Equal("invoke", root.GetProperty("actions")[0].GetString());
+        Assert.Equal("Save", root.GetProperty("metadata").GetProperty("DisplayName").GetString());
     }
 
     [Fact]
@@ -107,6 +126,39 @@ public sealed class NodeSummarySerializationTests
         Assert.False(root.TryGetProperty("className", out _));
         Assert.False(root.TryGetProperty("value", out _));
         Assert.False(root.TryGetProperty("bounds", out _));
+        Assert.False(root.TryGetProperty("selected", out _));
+        Assert.False(root.TryGetProperty("expanded", out _));
+        Assert.False(root.TryGetProperty("checked", out _));
+        Assert.False(root.TryGetProperty("metadata", out _));
+    }
+
+    [Fact]
+    public void NodeSummaryDto_NullOptionalFields_AreOmittedWithoutSerializerSpecificOptions()
+    {
+        var node = new NodeSummaryDto
+        {
+            Id = "n1",
+            RootId = "w1",
+            Role = "pane",
+            Enabled = true,
+            Focused = false,
+            Offscreen = false,
+            Actions = []
+        };
+
+        var json = JsonSerializer.Serialize(node);
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        Assert.False(root.TryGetProperty("name", out _));
+        Assert.False(root.TryGetProperty("automationId", out _));
+        Assert.False(root.TryGetProperty("className", out _));
+        Assert.False(root.TryGetProperty("value", out _));
+        Assert.False(root.TryGetProperty("bounds", out _));
+        Assert.False(root.TryGetProperty("selected", out _));
+        Assert.False(root.TryGetProperty("expanded", out _));
+        Assert.False(root.TryGetProperty("checked", out _));
+        Assert.False(root.TryGetProperty("metadata", out _));
     }
 
     [Fact]
@@ -141,5 +193,25 @@ public sealed class NodeSummarySerializationTests
         };
 
         Assert.Null(node.Bounds);
+    }
+
+    [Fact]
+    public void NodeSummaryDto_Bounds_InvalidJsonPayload_ThrowsArgumentException()
+    {
+        const string json = """
+            {
+              "id": "n1",
+              "rootId": "w1",
+              "role": "pane",
+              "enabled": true,
+              "focused": false,
+              "offscreen": false,
+              "bounds": [10, 20, 30],
+              "actions": []
+            }
+            """;
+
+        var exception = Assert.Throws<ArgumentException>(() => JsonSerializer.Deserialize<NodeSummaryDto>(json, s_options));
+        Assert.Contains("Bounds must be null or exactly", exception.Message);
     }
 }
