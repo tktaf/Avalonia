@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- Dev-only bridge assembly: not shipped as a NuGet package -->
     <IsPackable>false</IsPackable>
+    <AutomationBridgeDevOnlyErrorText>Avalonia.Diagnostics.AutomationBridge is dev-only and must not be included in Release, publish, or pack outputs.</AutomationBridgeDevOnlyErrorText>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,4 +17,10 @@
   <ItemGroup Label="InternalsVisibleTo">
     <InternalsVisibleTo Include="Avalonia.Diagnostics.AutomationBridge.Tests, PublicKey=$(AvaloniaPublicKey)" />
   </ItemGroup>
+
+  <Target Name="PreventAutomationBridgeDisallowedOutputs"
+          BeforeTargets="BeforeBuild"
+          Condition="'$(Configuration)' == 'Release' or '$(_IsPublishing)' == 'true' or '$(_IsPacking)' == 'true'">
+    <Error Text="$(AutomationBridgeDevOnlyErrorText)" />
+  </Target>
 </Project>
