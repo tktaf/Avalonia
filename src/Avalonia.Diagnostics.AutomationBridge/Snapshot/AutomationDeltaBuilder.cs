@@ -99,6 +99,17 @@ internal sealed class AutomationDeltaBuilder : IDisposable
         }
     }
 
+    public DeltaDto ReconcileActionState(AutomationPeer peer, NodeSummaryDto beforeActionSummary)
+    {
+        ArgumentNullException.ThrowIfNull(peer);
+        ArgumentNullException.ThrowIfNull(beforeActionSummary);
+
+        var patch = BuildReconciledPatch(peer, beforeActionSummary);
+        return patch is null
+            ? EmptyDelta(_revision)
+            : PublishDelta([patch], Array.Empty<string>(), Array.Empty<string>(), null);
+    }
+
     public void EndActionCapture()
     {
         _capturedStartingRevision = null;
@@ -401,6 +412,52 @@ internal sealed class AutomationDeltaBuilder : IDisposable
         };
     }
 
+    private NodePatchDto? BuildReconciledPatch(AutomationPeer peer, NodeSummaryDto beforeActionSummary)
+    {
+        var afterActionSummary = _session.SummarizePeer(peer);
+        var changed = false;
+
+        var enabled = TryGetChangedValue(beforeActionSummary.Enabled, afterActionSummary.Enabled, ref changed);
+        var focused = TryGetChangedValue(beforeActionSummary.Focused, afterActionSummary.Focused, ref changed);
+        var value = TryGetChangedValue(beforeActionSummary.Value, afterActionSummary.Value, ref changed);
+        var offscreen = TryGetChangedValue(beforeActionSummary.Offscreen, afterActionSummary.Offscreen, ref changed);
+        var selected = TryGetChangedValue(beforeActionSummary.Selected, afterActionSummary.Selected, ref changed);
+        var expanded = TryGetChangedValue(beforeActionSummary.Expanded, afterActionSummary.Expanded, ref changed);
+        var checkedState = TryGetChangedValue(beforeActionSummary.Checked, afterActionSummary.Checked, ref changed);
+        var name = TryGetChangedValue(beforeActionSummary.Name, afterActionSummary.Name, ref changed);
+        var state = TryGetChangedMap(beforeActionSummary.State, afterActionSummary.State, ref changed);
+        var metadata = TryGetChangedMap(beforeActionSummary.Metadata, afterActionSummary.Metadata, ref changed);
+
+        if (!changed)
+            return null;
+
+        return new NodePatchDto
+        {
+            Id = afterActionSummary.Id,
+            Enabled = enabled,
+            Focused = focused,
+            Value = value,
+            Offscreen = offscreen,
+            Selected = selected,
+            Expanded = expanded,
+            Checked = checkedState,
+            Name = name,
+            State = state,
+            Metadata = metadata,
+            Cleared = BuildClearedFields(
+                (NodePatchField.Enabled, beforeActionSummary.Enabled is not null && afterActionSummary.Enabled is null),
+                (NodePatchField.Focused, beforeActionSummary.Focused is not null && afterActionSummary.Focused is null),
+                (NodePatchField.Value, beforeActionSummary.Value is not null && afterActionSummary.Value is null),
+                (NodePatchField.Offscreen, beforeActionSummary.Offscreen is not null && afterActionSummary.Offscreen is null),
+                (NodePatchField.Selected, beforeActionSummary.Selected is not null && afterActionSummary.Selected is null),
+                (NodePatchField.Expanded, beforeActionSummary.Expanded is not null && afterActionSummary.Expanded is null),
+                (NodePatchField.Checked, beforeActionSummary.Checked is not null && afterActionSummary.Checked is null),
+                (NodePatchField.Name, beforeActionSummary.Name is not null && afterActionSummary.Name is null),
+                (NodePatchField.State, beforeActionSummary.State is not null && afterActionSummary.State is null),
+                (NodePatchField.Metadata, beforeActionSummary.Metadata is not null && afterActionSummary.Metadata is null)),
+        };
+    }
+
     private NodePatchDto? BuildPatch(AutomationPeer peer, AutomationProperty property)
     {
         var id = _session.GetOrAssignHandle(peer);
@@ -506,6 +563,61 @@ internal sealed class AutomationDeltaBuilder : IDisposable
 
         cleared ??= [];
         cleared.Add(field);
+    }
+
+    private static bool? TryGetChangedValue(bool? before, bool? after, ref bool changed)
+    {
+        if (before == after)
+            return null;
+
+        changed = true;
+        return after;
+    }
+
+    private static string? TryGetChangedValue(string? before, string? after, ref bool changed)
+    {
+        if (string.Equals(before, after, StringComparison.Ordinal))
+            return null;
+
+        changed = true;
+        return after;
+    }
+
+    private static IReadOnlyDictionary<string, string>? TryGetChangedMap(
+        IReadOnlyDictionary<string, string>? before,
+        IReadOnlyDictionary<string, string>? after,
+        ref bool changed)
+    {
+        if (AreEquivalent(before, after))
+            return null;
+
+        changed = true;
+        return after;
+    }
+
+    private static bool AreEquivalent(
+        IReadOnlyDictionary<string, string>? before,
+        IReadOnlyDictionary<string, string>? after)
+    {
+        if (ReferenceEquals(before, after))
+            return true;
+
+        if (before is null || after is null)
+            return before is null && after is null;
+
+        if (before.Count != after.Count)
+            return false;
+
+        foreach (var (key, value) in before)
+        {
+            if (!after.TryGetValue(key, out var afterValue)
+                || !string.Equals(value, afterValue, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static IEnumerable<AutomationPeer> EnumerateSubtree(AutomationPeer root)

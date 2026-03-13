@@ -237,6 +237,31 @@ public sealed class ActionDispatchTests
     }
 
     [Fact]
+    public void Dispatch_ReturnsCompletedCompletion_WhenSelectMutatesStateWithoutAutomationEvent()
+    {
+        var peer = new StubAutomationPeer();
+        var provider = new MutableSelectionItemProvider();
+        peer.RegisterProvider<ISelectionItemProvider>(provider);
+        var fixture = CreateFixture(peer);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            fixture.Session,
+            new BridgeRequest
+            {
+                Action = BridgeAction.Select,
+                NodeId = fixture.NodeId,
+            });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Completed, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        var patch = Assert.Single(response.Delta!.Updated);
+        Assert.True(patch.Selected);
+        Assert.Empty(response.Delta.Added);
+        Assert.Empty(response.Delta.Removed);
+    }
+
+    [Fact]
     public void Dispatch_AggregatesMultipleDeltaEvents_FromOneAction()
     {
         var peer = new StubAutomationPeer { Name = "Original" };
@@ -546,6 +571,18 @@ public sealed class ActionDispatchTests
         public void RemoveFromSelection() { }
 
         public void Select() => throw new InvalidOperationException("selection exploded");
+    }
+
+    private sealed class MutableSelectionItemProvider : ISelectionItemProvider
+    {
+        public bool IsSelected { get; private set; }
+        public ISelectionProvider? SelectionContainer => null;
+
+        public void AddToSelection() => IsSelected = true;
+
+        public void RemoveFromSelection() => IsSelected = false;
+
+        public void Select() => IsSelected = true;
     }
 
     private sealed class StubExpandCollapseProvider : IExpandCollapseProvider

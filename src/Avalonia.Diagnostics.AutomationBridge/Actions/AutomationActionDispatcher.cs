@@ -38,6 +38,7 @@ public static class AutomationActionDispatcher
             var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
             var startingRevision = deltaBuilder.CurrentRevision;
             deltaBuilder.BeginActionCapture(startingRevision);
+            var beforeActionSummary = session.SummarizePeer(peer);
 
             var response = request.Action switch
             {
@@ -61,6 +62,9 @@ public static class AutomationActionDispatcher
             }
 
             var delta = deltaBuilder.CompleteAction(peer, startingRevision);
+            if (delta.Revision == startingRevision)
+                delta = deltaBuilder.ReconcileActionState(peer, beforeActionSummary);
+
             var completionState = delta.Revision == startingRevision
                 ? BridgeActionCompletionState.Accepted
                 : BridgeActionCompletionState.Completed;
