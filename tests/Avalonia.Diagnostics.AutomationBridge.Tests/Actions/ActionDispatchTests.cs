@@ -262,6 +262,39 @@ public sealed class ActionDispatchTests
     }
 
     [Fact]
+    public void Dispatch_ReturnsCompletedCompletion_WhenActionPublishesRelatedNodeModalState()
+    {
+        var root = new StubAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        var target = new StubAutomationPeer();
+        var related = new StubAutomationPeer { Name = "Dialog Host" };
+        target.RegisterProvider<IInvokeProvider>(new RelatedNodeModalInvokeProvider(related));
+        root.AddChild(target);
+        root.AddChild(related);
+
+        using var session = new AutomationBridgeSession(new AutomationRootRegistry(() => new[] { root }));
+        _ = session.GetRoots();
+        var targetId = session.GetOrAssignHandle(target);
+        var relatedId = session.GetOrAssignHandle(related);
+
+        var response = AutomationActionDispatcher.Dispatch(
+            session,
+            new BridgeRequest
+            {
+                Action = BridgeAction.Invoke,
+                NodeId = targetId,
+            });
+
+        Assert.True(response.Ok);
+        Assert.Equal(BridgeActionCompletionState.Completed, response.Completion?.State);
+        Assert.NotNull(response.Delta);
+        var patch = Assert.Single(response.Delta!.Updated);
+        Assert.Equal(relatedId, patch.Id);
+        Assert.NotNull(patch.State);
+        Assert.Equal("true", patch.State!["busy"]);
+        Assert.Equal("true", patch.State["modal"]);
+    }
+
+    [Fact]
     public void Dispatch_AggregatesMultipleDeltaEvents_FromOneAction()
     {
         var peer = new StubAutomationPeer { Name = "Original" };
@@ -496,6 +529,25 @@ public sealed class ActionDispatchTests
 
         public void SetValue(string? value)
             => _peer.RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, null, value);
+    }
+
+    private sealed class RelatedNodeModalInvokeProvider : IInvokeProvider
+    {
+        private readonly StubAutomationPeer _peer;
+
+        public RelatedNodeModalInvokeProvider(StubAutomationPeer peer)
+        {
+            _peer = peer;
+        }
+
+        public void Invoke()
+        {
+            _peer.ItemStatus = "busy; modal=true";
+            _peer.RaisePropertyChangedEvent(
+                AutomationElementIdentifiers.ItemStatusProperty,
+                null,
+                _peer.ItemStatus);
+        }
     }
 
     private sealed class MultiEventRaisingValueProvider : IValueProvider
