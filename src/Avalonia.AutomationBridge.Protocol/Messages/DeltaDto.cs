@@ -78,8 +78,36 @@ public sealed class NodePatchDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? Name { get; init; }
 
+    /// <summary>Updated state bag, or null if unchanged.</summary>
+    [JsonPropertyName("state")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? State { get; init; }
+
     /// <summary>Updated metadata bag, or null if unchanged.</summary>
     [JsonPropertyName("metadata")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyDictionary<string, string>? Metadata { get; init; }
+
+    /// <summary>
+    /// Fields that were explicitly cleared to null by this patch.
+    /// This distinguishes "changed to null" from "field omitted because unchanged".
+    /// </summary>
+    [JsonPropertyName("cleared")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string[]? Cleared { get; init; }
+}
+
+/// <summary>Stable field names used by <see cref="NodePatchDto.Cleared"/>.</summary>
+public static class NodePatchField
+{
+    public const string Enabled = "enabled";
+    public const string Focused = "focused";
+    public const string Value = "value";
+    public const string Offscreen = "offscreen";
+    public const string Selected = "selected";
+    public const string Expanded = "expanded";
+    public const string Checked = "checked";
+    public const string Name = "name";
+    public const string State = "state";
+    public const string Metadata = "metadata";
 }

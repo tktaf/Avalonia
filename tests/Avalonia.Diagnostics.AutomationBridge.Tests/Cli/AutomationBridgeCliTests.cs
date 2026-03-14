@@ -91,6 +91,7 @@ public sealed class AutomationBridgeCliTests
         Assert.Contains("Usage:", stdout.ToString(), StringComparison.Ordinal);
         Assert.Contains("wait-for", stdout.ToString(), StringComparison.Ordinal);
         Assert.Contains("inspect", stdout.ToString(), StringComparison.Ordinal);
+        Assert.Contains("--selected", stdout.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -101,6 +102,7 @@ public sealed class AutomationBridgeCliTests
         {
             Name = "The Analyst",
             AutomationId = "gm-archetype-analyst",
+            ItemStatus = "currentTab=Contract",
         };
         option.RegisterProvider<ISelectionItemProvider>(new StubSelectionItemProvider(isSelected: true));
         root.AddChild(option);
@@ -114,11 +116,12 @@ public sealed class AutomationBridgeCliTests
             "query",
             "--root-id", rootId,
             "--automation-id", "gm-archetype-analyst",
-            "--fields", "name,selected");
+            "--fields", "name,selected,state");
         var node = Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes));
 
         Assert.Equal("The Analyst", node.Name);
         Assert.True(node.Selected);
+        Assert.Equal("Contract", node.State!["currentTab"]);
         Assert.Null(node.AutomationId);
         Assert.Null(node.Actions);
     }
@@ -148,6 +151,56 @@ public sealed class AutomationBridgeCliTests
 
         Assert.Equal("Launch Franchise", node.Name);
         Assert.Equal("launch-franchise", node.AutomationId);
+    }
+
+    [Fact]
+    public async Task InspectCommand_PreservesStructuredSelectorFailures()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "inspect", "--root-id", rootId, "--automation-id", "missing-node"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.False(response.Ok);
+        Assert.Equal(BridgeErrorCode.NodeNotFound, response.Error!.Code);
+    }
+
+    [Fact]
+    public async Task InvokeCommand_PreservesStructuredSelectorFailures()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        root.AddChild(new StubAutomationPeer { Name = "Save", AutomationId = "save-primary" });
+        root.AddChild(new StubAutomationPeer { Name = "Save", AutomationId = "save-secondary" });
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "invoke", "--root-id", rootId, "--text", "Save"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.False(response.Ok);
+        Assert.Equal(BridgeErrorCode.SelectorAmbiguous, response.Error!.Code);
     }
 
     [Fact]
@@ -183,6 +236,109 @@ public sealed class AutomationBridgeCliTests
         var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
         Assert.True(response.Ok);
         Assert.Equal("Contract Details", Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes)).Name);
+    }
+
+    [Fact]
+    public async Task WaitForCommand_SupportsStateConditions()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        var option = new StubAutomationPeer
+        {
+            Name = "The Analyst",
+            AutomationId = "gm-archetype-analyst",
+        };
+        var provider = new MutableSelectionItemProvider();
+        option.RegisterProvider<ISelectionItemProvider>(provider);
+        root.AddChild(option);
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        _ = Task.Run(async () =>
+            {
+                await Task.Delay(150, TestContext.Current.CancellationToken);
+                provider.IsSelected = true;
+            },
+            TestContext.Current.CancellationToken);
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "wait-for", "--root-id", rootId, "--automation-id", "gm-archetype-analyst", "--selected", "true", "--timeout-ms", "2000", "--interval-ms", "50"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.True(response.Ok);
+        Assert.True(Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes)).Selected);
+    }
+
+    [Fact]
+    public async Task WaitForCommand_SupportsStructuredStateBagConditions()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        var detail = new StubAutomationPeer
+        {
+            Name = "Profile",
+            AutomationId = "player-profile",
+            ItemStatus = "currentTab=Overview",
+        };
+        root.AddChild(detail);
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        _ = Task.Run(async () =>
+            {
+                await Task.Delay(150, TestContext.Current.CancellationToken);
+                detail.ItemStatus = "currentTab=Contract";
+            },
+            TestContext.Current.CancellationToken);
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "wait-for", "--root-id", rootId, "--automation-id", "player-profile", "--state", "currentTab=Contract", "--timeout-ms", "2000", "--interval-ms", "50"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(0, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.True(response.Ok);
+        Assert.Equal("Contract", Assert.Single(Assert.IsType<NodeSummaryDto[]>(response.Nodes)).State!["currentTab"]);
+    }
+
+    [Fact]
+    public async Task WaitForCommand_PreservesNonRetryableBridgeErrors()
+    {
+        var root = new StubRootAutomationPeer { ControlType = Avalonia.Automation.Peers.AutomationControlType.Window };
+        root.AddChild(new StubAutomationPeer { Name = "Save", AutomationId = "save-primary" });
+        root.AddChild(new StubAutomationPeer { Name = "Save", AutomationId = "save-secondary" });
+
+        using var service = StartService(root);
+        var roots = await SendCliAsync(service.BoundPort, "roots");
+        var rootId = Assert.Single(Assert.IsType<NodeSummaryDto[]>(roots.Nodes)).Id;
+
+        using var stdout = new StringWriter();
+        using var stderr = new StringWriter();
+        var exitCode = await AutomationBridgeCliRunner.RunAsync(
+            ["--port", service.BoundPort.ToString(), "wait-for", "--root-id", rootId, "--text", "Save", "--timeout-ms", "2000", "--interval-ms", "50"],
+            stdout,
+            stderr,
+            CancellationToken.None);
+
+        Assert.Equal(2, exitCode);
+        Assert.Equal(string.Empty, stderr.ToString());
+        var response = JsonSerializer.Deserialize<BridgeResponse>(stdout.ToString(), s_json)!;
+        Assert.False(response.Ok);
+        Assert.Equal(BridgeErrorCode.SelectorAmbiguous, response.Error!.Code);
     }
 
     [Fact]
@@ -260,6 +416,15 @@ public sealed class AutomationBridgeCliTests
         public void AddToSelection() { }
         public void RemoveFromSelection() { }
         public void Select() { }
+    }
+
+    private sealed class MutableSelectionItemProvider : ISelectionItemProvider
+    {
+        public bool IsSelected { get; set; }
+        public ISelectionProvider? SelectionContainer => null;
+        public void AddToSelection() => IsSelected = true;
+        public void RemoveFromSelection() => IsSelected = false;
+        public void Select() => IsSelected = true;
     }
 
     private sealed class InlineRequestInvoker : IAutomationBridgeRequestInvoker

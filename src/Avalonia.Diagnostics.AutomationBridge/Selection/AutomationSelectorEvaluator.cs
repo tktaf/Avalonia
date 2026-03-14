@@ -67,7 +67,7 @@ public static class AutomationSelectorEvaluator
             }
 
             return BridgeResponse.WithNodes(
-                NodeSummaryProjection.Apply(new[] { session.SummarizePeer(matches[nth]) }, selector.Fields),
+                [session.SummarizePeer(matches[nth], selector.Fields)],
                 requestId);
         }
 
@@ -89,7 +89,7 @@ public static class AutomationSelectorEvaluator
         }
 
         return BridgeResponse.WithNodes(
-            NodeSummaryProjection.Apply(matches.Take(limit).Select(session.SummarizePeer).ToArray(), selector.Fields),
+            matches.Take(limit).Select(peer => session.SummarizePeer(peer, selector.Fields)).ToArray(),
             requestId);
     }
 
@@ -97,7 +97,7 @@ public static class AutomationSelectorEvaluator
     {
         yield return root;
 
-        foreach (var child in root.GetChildren())
+        foreach (var child in TryGetChildren(root))
         {
             foreach (var descendant in EnumerateDepthFirst(child))
             {
@@ -110,14 +110,17 @@ public static class AutomationSelectorEvaluator
     {
         var automationId = selector.AutomationId ?? selector.Id;
         if (automationId is not null
-            && !string.Equals(peer.GetAutomationId(), automationId, StringComparison.Ordinal))
+            && !string.Equals(TryGetString(peer.GetAutomationId), automationId, StringComparison.Ordinal))
         {
             return false;
         }
 
         if (selector.Name is not null)
         {
-            var peerName = peer.GetName();
+            var peerName = TryGetString(peer.GetName);
+            if (peerName is null)
+                return false;
+
             if (selector.NameSubstring)
             {
                 if (!peerName.Contains(selector.Name, StringComparison.OrdinalIgnoreCase))
@@ -131,7 +134,7 @@ public static class AutomationSelectorEvaluator
 
         if (selector.Role is not null
             && !string.Equals(
-                AutomationNodeSummaryBuilder.GetRole(peer),
+                AutomationNodeSummaryBuilder.TryGetRoleOrNull(peer),
                 selector.Role,
                 StringComparison.OrdinalIgnoreCase))
         {
@@ -139,17 +142,19 @@ public static class AutomationSelectorEvaluator
         }
 
         if (selector.ClassName is not null
-            && !string.Equals(peer.GetClassName(), selector.ClassName, StringComparison.Ordinal))
+            && !string.Equals(TryGetString(peer.GetClassName), selector.ClassName, StringComparison.Ordinal))
         {
             return false;
         }
 
-        if (selector.Focused is bool focused && peer.HasKeyboardFocus() != focused)
+        if (selector.Focused is bool focused
+            && TryGetBool(peer.HasKeyboardFocus) != focused)
         {
             return false;
         }
 
-        if (selector.Enabled is bool enabled && peer.IsEnabled() != enabled)
+        if (selector.Enabled is bool enabled
+            && TryGetBool(peer.IsEnabled) != enabled)
         {
             return false;
         }
@@ -161,7 +166,7 @@ public static class AutomationSelectorEvaluator
         }
 
         if (selector.Visible is bool visible
-            && peer.IsOffscreen() == visible)
+            && TryGetBool(peer.IsOffscreen) != !visible)
         {
             return false;
         }
@@ -171,6 +176,13 @@ public static class AutomationSelectorEvaluator
                 .Contains(selector.HasAction, StringComparer.OrdinalIgnoreCase))
         {
             return false;
+        }
+
+        if (selector.State is { Count: > 0 } requiredState)
+        {
+            var publishedState = AutomationNodeSummaryBuilder.GetState(peer);
+            if (publishedState is null || !MatchesState(publishedState, requiredState))
+                return false;
         }
 
         if (selector.Path is { Length: > 0 } path && !MatchesPath(peer, scopeRoot, path))
@@ -184,7 +196,7 @@ public static class AutomationSelectorEvaluator
     private static bool MatchesPath(AutomationPeer peer, AutomationPeer scopeRoot, IReadOnlyList<string> path)
     {
         var ancestors = new List<AutomationPeer>();
-        var current = peer.GetParent();
+        var current = TryGetParent(peer);
 
         while (current is not null)
         {
@@ -192,7 +204,7 @@ public static class AutomationSelectorEvaluator
             if (ReferenceEquals(current, scopeRoot))
                 break;
 
-            current = current.GetParent();
+            current = TryGetParent(current);
         }
 
         ancestors.Reverse();
@@ -211,9 +223,32 @@ public static class AutomationSelectorEvaluator
 
     private static bool MatchesPathSegment(AutomationPeer peer, string segment)
     {
-        return peer.GetName().Contains(segment, StringComparison.OrdinalIgnoreCase)
-            || AutomationNodeSummaryBuilder.GetRole(peer)
-                .Contains(segment, StringComparison.OrdinalIgnoreCase);
+        return (TryGetString(peer.GetName)?.Contains(segment, StringComparison.OrdinalIgnoreCase) ?? false)
+            || (AutomationNodeSummaryBuilder.TryGetRole(peer)?.Contains(segment, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private static string? TryGetString(Func<string?> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool? TryGetBool(Func<bool> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private static bool IsDescendantOrSelf(AutomationPeer root, AutomationPeer peer)
@@ -225,9 +260,49 @@ public static class AutomationSelectorEvaluator
             if (ReferenceEquals(current, root))
                 return true;
 
-            current = current.GetParent();
+            current = TryGetParent(current);
         }
 
         return false;
+    }
+
+    private static bool MatchesState(
+        IReadOnlyDictionary<string, string> publishedState,
+        IReadOnlyDictionary<string, string> requiredState)
+    {
+        foreach (var pair in requiredState)
+        {
+            if (!publishedState.TryGetValue(pair.Key, out var publishedValue)
+                || !string.Equals(publishedValue, pair.Value, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static IReadOnlyList<AutomationPeer> TryGetChildren(AutomationPeer peer)
+    {
+        try
+        {
+            return peer.GetChildren();
+        }
+        catch
+        {
+            return Array.Empty<AutomationPeer>();
+        }
+    }
+
+    private static AutomationPeer? TryGetParent(AutomationPeer peer)
+    {
+        try
+        {
+            return peer.GetParent();
+        }
+        catch
+        {
+            return null;
+        }
     }
 }

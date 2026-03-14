@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -124,13 +125,16 @@ public static class AutomationBridgeCliRunner
         CommandOptions options,
         CancellationToken cancellationToken)
     {
-        var nodeId = await ResolveTargetNodeIdAsync(options, cancellationToken).ConfigureAwait(false);
+        var resolution = await ResolveTargetNodeIdAsync(options, cancellationToken).ConfigureAwait(false);
+        if (resolution.Failure is not null)
+            return resolution.Failure;
+
         var response = await SendAsync(
             options,
             new BridgeRequest
             {
                 Action = BridgeAction.Describe,
-                NodeId = nodeId,
+                NodeId = resolution.NodeId,
             },
             cancellationToken).ConfigureAwait(false);
 
@@ -194,6 +198,9 @@ public static class AutomationBridgeCliRunner
             if (response.Ok)
                 return response;
 
+            if (!string.Equals(response.Error?.Code, BridgeErrorCode.NodeNotFound, StringComparison.Ordinal))
+                return response;
+
             if (DateTime.UtcNow >= deadline)
             {
                 return BridgeResponse.Failure(
@@ -211,23 +218,26 @@ public static class AutomationBridgeCliRunner
         Func<BridgeRequest, BridgeRequest> configure,
         CancellationToken cancellationToken)
     {
-        var nodeId = await ResolveTargetNodeIdAsync(options, cancellationToken).ConfigureAwait(false);
+        var resolution = await ResolveTargetNodeIdAsync(options, cancellationToken).ConfigureAwait(false);
+        if (resolution.Failure is not null)
+            return resolution.Failure;
+
         var request = configure(new BridgeRequest
         {
             Action = action,
-            NodeId = nodeId,
+            NodeId = resolution.NodeId,
         });
 
         return await SendAsync(options, request, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task<string> ResolveTargetNodeIdAsync(
+    private static async Task<TargetResolutionResult> ResolveTargetNodeIdAsync(
         CommandOptions options,
         CancellationToken cancellationToken)
     {
         var nodeId = ReadOption(options.CommandArgs, "--node-id", required: false);
         if (!string.IsNullOrEmpty(nodeId))
-            return nodeId;
+            return new TargetResolutionResult(nodeId, null);
 
         var rootId = ReadOption(options.CommandArgs, "--root-id", required: false)
             ?? throw new InvalidOperationException("Resolving a target by selector requires --root-id.");
@@ -244,9 +254,10 @@ public static class AutomationBridgeCliRunner
             cancellationToken).ConfigureAwait(false);
 
         if (!response.Ok)
-            throw new InvalidOperationException(response.Error?.Message ?? "Failed to resolve target node.");
+            return new TargetResolutionResult(null, response);
 
-        return AssertSingleNode(response).Id;
+        var node = TryGetSingleNode(response, out var failure);
+        return new TargetResolutionResult(node?.Id, failure);
     }
 
     private static SelectorDto BuildSelector(string[] args)
@@ -272,6 +283,7 @@ public static class AutomationBridgeCliRunner
             Selected = TryReadNullableBool(args, "--selected") ?? baseSelector?.Selected,
             Visible = TryReadNullableBool(args, "--visible") ?? baseSelector?.Visible,
             HasAction = ReadOption(args, "--has-action", required: false) ?? baseSelector?.HasAction,
+            State = MergeStateFilters(baseSelector?.State, ParseStateFilters(args)),
             Within = ReadOption(args, "--within", required: false) ?? baseSelector?.Within,
             ContainerId = ReadOption(args, "--container-id", required: false) ?? baseSelector?.ContainerId,
             Path = baseSelector?.Path,
@@ -352,6 +364,9 @@ public static class AutomationBridgeCliRunner
         if (node.Actions is { Length: > 0 })
             parts.Add($"actions={string.Join(",", node.Actions)}");
 
+        if (node.State is { Count: > 0 } state)
+            parts.Add($"state={string.Join(",", state.Select(pair => $"{pair.Key}:{pair.Value}"))}");
+
         return string.Join(" ", parts);
     }
 
@@ -383,6 +398,7 @@ public static class AutomationBridgeCliRunner
                 Value = Include(requested, "value") ? node.Value : null,
                 Bounds = Include(requested, "bounds") ? node.Bounds : null,
                 Actions = Include(requested, "actions") ? node.Actions : null,
+                State = Include(requested, "state") ? node.State : null,
                 Metadata = Include(requested, "metadata") ? node.Metadata : null,
             };
         }
@@ -409,7 +425,7 @@ public static class AutomationBridgeCliRunner
              describe --node-id NODE_ID
              query --root-id ROOT_ID [--selector-json JSON] [--automation-id ID] [--text TEXT] [--fields csv]
              inspect (--node-id NODE_ID | --root-id ROOT_ID --automation-id ID)
-             wait-for --root-id ROOT_ID (--automation-id ID | --text TEXT | --selector-json JSON) [--timeout-ms N] [--interval-ms N]
+             wait-for --root-id ROOT_ID [selector options such as --automation-id ID --text TEXT --selected true --state currentTab=Contract] [--timeout-ms N] [--interval-ms N]
              invoke|toggle|select|expand|collapse|set-focus|show-context-menu --root-id ROOT_ID --automation-id ID
              set-value --root-id ROOT_ID --automation-id ID --value VALUE
              scroll --root-id ROOT_ID --automation-id ID [--horizontal-amount AMOUNT] [--vertical-amount AMOUNT]
@@ -420,6 +436,8 @@ public static class AutomationBridgeCliRunner
              bridge query --root-id w1 --automation-id player-profile-contract-tab-button --fields id,name,actions
              bridge inspect --root-id w1 --automation-id launch-franchise
              bridge wait-for --root-id w1 --text "Contract Details" --timeout-ms 5000
+             bridge wait-for --root-id w1 --automation-id player-profile-contract-tab-button --selected true
+             bridge wait-for --root-id w1 --automation-id player-profile --state currentTab=Contract
            """;
 
     private static CommandOptions Parse(string[] args)
@@ -542,11 +560,65 @@ Command:
         return csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
     }
 
-    private static NodeSummaryDto AssertSingleNode(BridgeResponse response)
+    private static Dictionary<string, string>? ParseStateFilters(string[] args)
+    {
+        Dictionary<string, string>? filters = null;
+
+        for (var index = 0; index < args.Length; index++)
+        {
+            if (!string.Equals(args[index], "--state", StringComparison.Ordinal))
+                continue;
+
+            if (index + 1 >= args.Length)
+                throw new InvalidOperationException("Missing value for --state.");
+
+            var pair = args[index + 1];
+            var separatorIndex = pair.IndexOf('=');
+            if (separatorIndex <= 0 || separatorIndex == pair.Length - 1)
+                throw new InvalidOperationException($"State filter '{pair}' must be in key=value form.");
+
+            filters ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            filters[pair[..separatorIndex]] = pair[(separatorIndex + 1)..];
+            index++;
+        }
+
+        return filters;
+    }
+
+    private static IReadOnlyDictionary<string, string>? MergeStateFilters(
+        IReadOnlyDictionary<string, string>? baseState,
+        IReadOnlyDictionary<string, string>? overrideState)
+    {
+        if (baseState is null || baseState.Count == 0)
+            return overrideState;
+
+        if (overrideState is null || overrideState.Count == 0)
+            return baseState;
+
+        var merged = new Dictionary<string, string>(baseState, StringComparer.Ordinal);
+        foreach (var pair in overrideState)
+            merged[pair.Key] = pair.Value;
+
+        return merged;
+    }
+
+    private static NodeSummaryDto? TryGetSingleNode(BridgeResponse response, out BridgeResponse? failure)
     {
         if (response.Nodes is not { Length: 1 })
-            throw new InvalidOperationException("Selector did not resolve to exactly one node.");
+        {
+            failure = response.Nodes is { Length: > 1 }
+                ? BridgeResponse.Failure(
+                    BridgeErrorCode.SelectorAmbiguous,
+                    "Selector did not resolve to exactly one node.",
+                    response.RequestId)
+                : BridgeResponse.Failure(
+                    BridgeErrorCode.NodeNotFound,
+                    "Selector did not resolve to exactly one node.",
+                    response.RequestId);
+            return null;
+        }
 
+        failure = null;
         return response.Nodes[0];
     }
 
@@ -582,6 +654,8 @@ Command:
         OutputMode Output,
         string Command,
         string[] CommandArgs);
+
+    private sealed record TargetResolutionResult(string? NodeId, BridgeResponse? Failure);
 
     private enum OutputMode
     {

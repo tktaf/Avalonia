@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
 using Avalonia.AutomationBridge.Protocol.Messages;
+using Avalonia.Controls;
+using Avalonia.Controls.Automation.Peers;
 
 namespace Avalonia.Diagnostics.AutomationBridge.Snapshot;
 
@@ -22,9 +23,6 @@ namespace Avalonia.Diagnostics.AutomationBridge.Snapshot;
 /// </remarks>
 public static class AutomationNodeSummaryBuilder
 {
-    private static readonly Regex s_structuredNameEntryPattern =
-        new(@"(?:(?<=^)|(?<=, ))(?<key>[A-Za-z_][A-Za-z0-9_]*) = ", RegexOptions.Compiled);
-
     private static readonly string[] s_preferredLabelKeys =
     [
         "DisplayName",
@@ -48,31 +46,77 @@ public static class AutomationNodeSummaryBuilder
     /// The session-local handle of the root that owns this node (e.g. <c>w1</c>).
     /// For root nodes this is the same as <paramref name="handle"/>.
     /// </param>
+    /// <param name="fields">
+    /// Optional response projection fields. When provided, only the requested summary properties are
+    /// materialized; <c>id</c>, <c>rootId</c>, and <c>role</c> are always included.
+    /// </param>
     /// <returns>A compact, protocol-ready summary of the node.</returns>
-    public static NodeSummaryDto Build(AutomationPeer peer, string handle, string rootId)
+    public static NodeSummaryDto Build(
+        AutomationPeer peer,
+        string handle,
+        string rootId,
+        IReadOnlyCollection<string>? fields = null)
     {
-        var bounds = TryGetBounds(peer);
-        var actions = GetActions(peer);
-        var (name, metadata) = BuildNameAndMetadata(TryGetString(peer.GetName));
+        var requestedFields = fields is { Count: > 0 }
+            ? new HashSet<string>(fields, StringComparer.OrdinalIgnoreCase)
+            : null;
+        var includeAllFields = requestedFields is null;
+        var includeName = includeAllFields || requestedFields!.Contains("name");
+        var includeMetadata = includeAllFields || requestedFields!.Contains("metadata");
+
+        string? name = null;
+        IReadOnlyDictionary<string, string>? metadata = null;
+        if (includeName || includeMetadata)
+        {
+            var rawName = TryGetString(peer.GetName);
+            var itemType = includeMetadata ? TryGetString(peer.GetItemType) : null;
+            var helpText = includeMetadata ? TryGetString(peer.GetHelpText) : null;
+            (name, metadata) = BuildNameAndMetadata(rawName, itemType, helpText);
+        }
 
         return new NodeSummaryDto
         {
             Id = handle,
             RootId = rootId,
             Role = TryGetRole(peer),
-            Name = name,
-            AutomationId = TryGetString(peer.GetAutomationId),
-            ClassName = TryGetString(peer.GetClassName),
-            Enabled = TryGetBool(peer.IsEnabled),
-            Focused = TryGetBool(peer.HasKeyboardFocus),
-            Offscreen = TryGetBool(peer.IsOffscreen),
-            Selected = GetSelected(peer),
-            Expanded = GetExpanded(peer),
-            Checked = GetChecked(peer),
-            Value = TryGetValue(peer),
-            Bounds = bounds,
-            Actions = actions,
-            Metadata = metadata,
+            Name = includeName ? name : null,
+            AutomationId = ShouldInclude(requestedFields, includeAllFields, "automationId")
+                ? TryGetString(peer.GetAutomationId)
+                : null,
+            ClassName = ShouldInclude(requestedFields, includeAllFields, "className")
+                ? TryGetString(peer.GetClassName)
+                : null,
+            Enabled = ShouldInclude(requestedFields, includeAllFields, "enabled")
+                ? TryGetNullableBool(peer.IsEnabled)
+                : null,
+            Focused = ShouldInclude(requestedFields, includeAllFields, "focused")
+                ? TryGetNullableBool(peer.HasKeyboardFocus)
+                : null,
+            Offscreen = ShouldInclude(requestedFields, includeAllFields, "offscreen")
+                ? TryGetNullableBool(peer.IsOffscreen)
+                : null,
+            Selected = ShouldInclude(requestedFields, includeAllFields, "selected")
+                ? GetSelected(peer)
+                : null,
+            Expanded = ShouldInclude(requestedFields, includeAllFields, "expanded")
+                ? GetExpanded(peer)
+                : null,
+            Checked = ShouldInclude(requestedFields, includeAllFields, "checked")
+                ? GetChecked(peer)
+                : null,
+            Value = ShouldInclude(requestedFields, includeAllFields, "value")
+                ? TryGetValue(peer)
+                : null,
+            Bounds = ShouldInclude(requestedFields, includeAllFields, "bounds")
+                ? TryGetBounds(peer)
+                : null,
+            Actions = ShouldInclude(requestedFields, includeAllFields, "actions")
+                ? GetActions(peer)
+                : null,
+            State = ShouldInclude(requestedFields, includeAllFields, "state")
+                ? GetState(peer)
+                : null,
+            Metadata = includeMetadata ? metadata : null,
         };
     }
 
@@ -139,61 +183,136 @@ public static class AutomationNodeSummaryBuilder
         var actions = new List<string>();
 
         if (TryGetProvider<IInvokeProvider>(peer) is not null)
-            actions.Add("invoke");
+            actions.Add(BridgeAction.Invoke);
 
-        if (TryGetProvider<IValueProvider>(peer) is { IsReadOnly: false })
-            actions.Add("setValue");
+        if (SupportsSetValue(TryGetProvider<IValueProvider>(peer)))
+            actions.Add(BridgeAction.SetValue);
 
         if (TryGetProvider<IToggleProvider>(peer) is not null)
-            actions.Add("toggle");
+            actions.Add(BridgeAction.Toggle);
 
         if (TryGetProvider<ISelectionItemProvider>(peer) is not null)
-            actions.Add("select");
+            actions.Add(BridgeAction.Select);
 
-        if (TryGetProvider<IExpandCollapseProvider>(peer) is not null)
+        if (SupportsExpandCollapse(peer))
         {
-            actions.Add("expand");
-            actions.Add("collapse");
+            actions.Add(BridgeAction.Expand);
+            actions.Add(BridgeAction.Collapse);
         }
 
         if (TryGetBool(peer.IsKeyboardFocusable))
-            actions.Add("setFocus");
+            actions.Add(BridgeAction.SetFocus);
+
+        if (SupportsShowContextMenu(peer))
+            actions.Add(BridgeAction.ShowContextMenu);
+
+        if (TryGetProvider<IScrollProvider>(peer) is not null)
+        {
+            actions.Add(BridgeAction.Scroll);
+            actions.Add(BridgeAction.SetScrollPercent);
+        }
 
         return actions.ToArray();
     }
 
+    private static bool SupportsShowContextMenu(AutomationPeer peer)
+    {
+        try
+        {
+            if (peer is not ControlAutomationPeer controlPeer)
+                return false;
+
+            for (Control? control = controlPeer.Owner; control is not null; control = control.Parent as Control)
+            {
+                if (control.ContextMenu is not null)
+                    return true;
+            }
+        }
+        catch
+        {
+            return false;
+        }
+
+        return false;
+    }
+
     internal static bool? GetSelected(AutomationPeer peer)
     {
-        var provider = TryGetProvider<ISelectionItemProvider>(peer);
-        return provider?.IsSelected;
+        try
+        {
+            var provider = TryGetProvider<ISelectionItemProvider>(peer);
+            return provider?.IsSelected;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     internal static bool? GetExpanded(AutomationPeer peer)
     {
-        var provider = TryGetProvider<IExpandCollapseProvider>(peer);
-        return provider?.ExpandCollapseState switch
+        try
         {
-            null => null,
-            Automation.ExpandCollapseState.Expanded => true,
-            Automation.ExpandCollapseState.PartiallyExpanded => true,
-            Automation.ExpandCollapseState.Collapsed => false,
-            Automation.ExpandCollapseState.LeafNode => false,
-            _ => null,
-        };
+            return GetExpandCollapseState(peer) switch
+            {
+                null => null,
+                Automation.ExpandCollapseState.Expanded => true,
+                Automation.ExpandCollapseState.PartiallyExpanded => true,
+                Automation.ExpandCollapseState.Collapsed => false,
+                Automation.ExpandCollapseState.LeafNode => null,
+                _ => null,
+            };
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    internal static bool SupportsExpandCollapse(AutomationPeer peer)
+        => GetExpandCollapseState(peer) is { } state
+           && state != Automation.ExpandCollapseState.LeafNode;
+
+    private static Automation.ExpandCollapseState? GetExpandCollapseState(AutomationPeer peer)
+    {
+        try
+        {
+            return TryGetProvider<IExpandCollapseProvider>(peer)?.ExpandCollapseState;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     internal static bool? GetChecked(AutomationPeer peer)
     {
-        var provider = TryGetProvider<IToggleProvider>(peer);
-        return provider?.ToggleState switch
+        try
         {
-            null => null,
-            ToggleState.On => true,
-            ToggleState.Off => false,
-            ToggleState.Indeterminate => null,
-            _ => null,
-        };
+            var provider = TryGetProvider<IToggleProvider>(peer);
+            return provider?.ToggleState switch
+            {
+                null => null,
+                ToggleState.On => true,
+                ToggleState.Off => false,
+                ToggleState.Indeterminate => null,
+                _ => null,
+            };
+        }
+        catch
+        {
+            return null;
+        }
     }
+
+    internal static IReadOnlyDictionary<string, string>? GetState(AutomationPeer peer)
+        => ParseState(TryGetString(peer.GetItemStatus));
+
+    internal static (string? Name, IReadOnlyDictionary<string, string>? Metadata) BuildNameAndMetadataForPatch(AutomationPeer peer)
+        => BuildNameAndMetadata(
+            TryGetString(peer.GetName),
+            TryGetString(peer.GetItemType),
+            TryGetString(peer.GetHelpText));
 
     // -------------------------------------------------------------------------
     // Helpers
@@ -202,7 +321,65 @@ public static class AutomationNodeSummaryBuilder
     private static string? NullIfEmpty(string? value)
         => string.IsNullOrEmpty(value) ? null : value;
 
-    private static string TryGetRole(AutomationPeer peer)
+    private static bool ShouldInclude(HashSet<string>? requestedFields, bool includeAllFields, string field)
+        => includeAllFields || requestedFields!.Contains(field);
+
+    private static IReadOnlyDictionary<string, string>? ParseState(string? rawState)
+    {
+        rawState = NullIfEmpty(rawState);
+        if (rawState is null)
+            return null;
+
+        Dictionary<string, string>? state = null;
+        foreach (var segment in rawState.Split([';', '|', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (!TryParseStateSegment(segment.Trim(','), out var key, out var value))
+                continue;
+
+            state ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            state[key] = value;
+        }
+
+        return state is { Count: > 0 }
+            ? state
+            : new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["status"] = rawState,
+            };
+    }
+
+    private static bool TryParseStateSegment(string segment, out string key, out string value)
+    {
+        key = string.Empty;
+        value = string.Empty;
+
+        if (string.IsNullOrWhiteSpace(segment))
+            return false;
+
+        var separatorIndex = segment.IndexOfAny(['=', ':']);
+        if (separatorIndex >= 0)
+        {
+            key = segment[..separatorIndex].Trim();
+            value = segment[(separatorIndex + 1)..].Trim();
+            return key.Length > 0 && value.Length > 0;
+        }
+
+        if (segment.Contains(' ', StringComparison.Ordinal))
+        {
+            key = "status";
+            value = segment;
+            return true;
+        }
+
+        key = segment;
+        value = bool.TrueString.ToLowerInvariant();
+        return true;
+    }
+
+    internal static string TryGetRole(AutomationPeer peer)
+        => TryGetRoleOrNull(peer) ?? "custom";
+
+    internal static string? TryGetRoleOrNull(AutomationPeer peer)
     {
         try
         {
@@ -210,7 +387,7 @@ public static class AutomationNodeSummaryBuilder
         }
         catch
         {
-            return "custom";
+            return null;
         }
     }
 
@@ -238,7 +415,34 @@ public static class AutomationNodeSummaryBuilder
         }
     }
 
-    private static string? TryGetValue(AutomationPeer peer)
+    private static bool? TryGetNullableBool(Func<bool> getter)
+    {
+        try
+        {
+            return getter();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool SupportsSetValue(IValueProvider? provider)
+    {
+        if (provider is null)
+            return false;
+
+        try
+        {
+            return !provider.IsReadOnly;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    internal static string? TryGetValue(AutomationPeer peer)
     {
         try
         {
@@ -276,15 +480,43 @@ public static class AutomationNodeSummaryBuilder
         }
     }
 
-    private static (string? Name, IReadOnlyDictionary<string, string>? Metadata) BuildNameAndMetadata(string? rawName)
+    private static (string? Name, IReadOnlyDictionary<string, string>? Metadata) BuildNameAndMetadata(
+        string? rawName,
+        string? itemType,
+        string? helpText)
     {
-        if (string.IsNullOrEmpty(rawName))
-            return (null, null);
+        var name = string.IsNullOrEmpty(rawName) ? null : rawName;
+        IReadOnlyDictionary<string, string>? metadata = null;
 
-        if (!TryParseStructuredObjectName(rawName, out var metadata))
-            return (rawName, null);
+        if (!string.IsNullOrEmpty(rawName) && TryParseStructuredObjectName(rawName, out var parsedMetadata))
+        {
+            name = ChooseDisplayName(parsedMetadata!) ?? rawName;
+            metadata = parsedMetadata;
+        }
 
-        return (ChooseDisplayName(metadata!) ?? rawName, metadata);
+        metadata = MergeMetadata(metadata, itemType, helpText);
+        return (name, metadata);
+    }
+
+    private static IReadOnlyDictionary<string, string>? MergeMetadata(
+        IReadOnlyDictionary<string, string>? metadata,
+        string? itemType,
+        string? helpText)
+    {
+        if (metadata is null && itemType is null && helpText is null)
+            return null;
+
+        var merged = metadata is null
+            ? new Dictionary<string, string>(StringComparer.Ordinal)
+            : new Dictionary<string, string>(metadata, StringComparer.Ordinal);
+
+        if (itemType is not null)
+            merged["itemType"] = itemType;
+
+        if (helpText is not null)
+            merged["helpText"] = helpText;
+
+        return merged;
     }
 
     private static bool TryParseStructuredObjectName(
@@ -298,8 +530,7 @@ public static class AutomationNodeSummaryBuilder
 
         var sourceType = rawName[..separatorIndex];
         var body = rawName[(separatorIndex + 3)..^2];
-        var matches = s_structuredNameEntryPattern.Matches(body);
-        if (matches.Count == 0)
+        if (!TrySplitStructuredSegments(body, out var segments))
             return false;
 
         var parsed = new Dictionary<string, string>(StringComparer.Ordinal)
@@ -307,21 +538,121 @@ public static class AutomationNodeSummaryBuilder
             ["sourceType"] = sourceType,
         };
 
-        for (var i = 0; i < matches.Count; i++)
+        foreach (var segment in segments)
         {
-            var match = matches[i];
-            var key = match.Groups["key"].Value;
-            var valueStart = match.Index + match.Length;
-            var valueEnd = i + 1 < matches.Count
-                ? matches[i + 1].Index - 2
-                : body.Length;
-            var value = body[valueStart..valueEnd].Trim();
+            if (!TryParseStructuredSegment(segment, out var key, out var value))
+                return false;
+
             parsed[key] = value;
         }
 
         metadata = parsed;
         return true;
     }
+
+    private static bool TrySplitStructuredSegments(string body, out List<string> segments)
+    {
+        segments = [];
+        var start = 0;
+        var delimiterDepth = 0;
+        var inQuotes = false;
+
+        for (var i = 0; i < body.Length; i++)
+        {
+            var current = body[i];
+
+            if (current == '"' && !IsEscaped(body, i))
+            {
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (inQuotes)
+                continue;
+
+            switch (current)
+            {
+                case '{':
+                case '[':
+                case '(':
+                    delimiterDepth++;
+                    break;
+                case '}':
+                case ']':
+                case ')':
+                    delimiterDepth--;
+                    if (delimiterDepth < 0)
+                        return false;
+                    break;
+                case ',' when delimiterDepth == 0:
+                    segments.Add(body[start..i].Trim());
+                    start = i + 1;
+                    break;
+            }
+        }
+
+        if (inQuotes || delimiterDepth != 0)
+            return false;
+
+        segments.Add(body[start..].Trim());
+        segments.RemoveAll(string.IsNullOrWhiteSpace);
+        return segments.Count > 0;
+    }
+
+    private static bool TryParseStructuredSegment(string segment, out string key, out string value)
+    {
+        key = string.Empty;
+        value = string.Empty;
+
+        var separatorIndex = FindTopLevelEquals(segment);
+        if (separatorIndex <= 0 || separatorIndex >= segment.Length - 1)
+            return false;
+
+        key = segment[..separatorIndex].Trim();
+        value = segment[(separatorIndex + 1)..].Trim();
+        return key.Length > 0 && value.Length > 0;
+    }
+
+    private static int FindTopLevelEquals(string segment)
+    {
+        var delimiterDepth = 0;
+        var inQuotes = false;
+
+        for (var i = 0; i < segment.Length; i++)
+        {
+            var current = segment[i];
+
+            if (current == '"' && !IsEscaped(segment, i))
+            {
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (inQuotes)
+                continue;
+
+            switch (current)
+            {
+                case '{':
+                case '[':
+                case '(':
+                    delimiterDepth++;
+                    break;
+                case '}':
+                case ']':
+                case ')':
+                    delimiterDepth--;
+                    break;
+                case '=' when delimiterDepth == 0:
+                    return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static bool IsEscaped(string value, int index)
+        => index > 0 && value[index - 1] == '\\';
 
     private static string? ChooseDisplayName(IReadOnlyDictionary<string, string> metadata)
     {

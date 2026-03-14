@@ -26,6 +26,7 @@ public sealed class SelectorSerializationTests
             Selected = true,
             Visible = true,
             HasAction = "invoke",
+            State = new Dictionary<string, string> { ["currentTab"] = "Contract" },
             Fields = ["name", "selected"],
             Path = ["MainWindow", "toolbar"],
             Nth = 0
@@ -48,6 +49,7 @@ public sealed class SelectorSerializationTests
         Assert.Equal(original.Selected, restored.Selected);
         Assert.Equal(original.Visible, restored.Visible);
         Assert.Equal(original.HasAction, restored.HasAction);
+        Assert.Equal(original.State, restored.State);
         Assert.Equal(original.Fields, restored.Fields);
         Assert.Equal(original.Path, restored.Path);
         Assert.Equal(0, restored.Nth);
@@ -96,6 +98,7 @@ public sealed class SelectorSerializationTests
         Assert.False(root.TryGetProperty("selected", out _));
         Assert.False(root.TryGetProperty("visible", out _));
         Assert.False(root.TryGetProperty("hasAction", out _));
+        Assert.False(root.TryGetProperty("state", out _));
         Assert.False(root.TryGetProperty("fields", out _));
         Assert.False(root.TryGetProperty("path", out _));
         Assert.False(root.TryGetProperty("nth", out _));

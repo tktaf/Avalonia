@@ -28,6 +28,11 @@ public sealed class NodeSummarySerializationTests
             Value = null,
             Bounds = [120, 40, 88, 32],
             Actions = ["invoke"],
+            State = new Dictionary<string, string>
+            {
+                ["busy"] = "true",
+                ["currentTab"] = "Contract",
+            },
             Metadata = new Dictionary<string, string>
             {
                 ["DisplayName"] = "Save",
@@ -54,6 +59,7 @@ public sealed class NodeSummarySerializationTests
         Assert.Null(restored.Value);
         Assert.Equal(original.Bounds, restored.Bounds);
         Assert.Equal(original.Actions, restored.Actions);
+        Assert.Equal(original.State, restored.State);
         Assert.Equal(original.Metadata, restored.Metadata);
     }
 
@@ -75,6 +81,10 @@ public sealed class NodeSummarySerializationTests
             Value = null,
             Bounds = [120.0, 40.0, 88.0, 32.0],
             Actions = ["invoke"],
+            State = new Dictionary<string, string>
+            {
+                ["busy"] = "true",
+            },
             Metadata = new Dictionary<string, string>
             {
                 ["DisplayName"] = "Save",
@@ -100,6 +110,7 @@ public sealed class NodeSummarySerializationTests
         var bounds = root.GetProperty("bounds");
         Assert.Equal(4, bounds.GetArrayLength());
         Assert.Equal("invoke", root.GetProperty("actions")[0].GetString());
+        Assert.Equal("true", root.GetProperty("state").GetProperty("busy").GetString());
         Assert.Equal("Save", root.GetProperty("metadata").GetProperty("DisplayName").GetString());
     }
 
@@ -129,6 +140,7 @@ public sealed class NodeSummarySerializationTests
         Assert.False(root.TryGetProperty("selected", out _));
         Assert.False(root.TryGetProperty("expanded", out _));
         Assert.False(root.TryGetProperty("checked", out _));
+        Assert.False(root.TryGetProperty("state", out _));
         Assert.False(root.TryGetProperty("metadata", out _));
     }
 
@@ -158,6 +170,7 @@ public sealed class NodeSummarySerializationTests
         Assert.False(root.TryGetProperty("selected", out _));
         Assert.False(root.TryGetProperty("expanded", out _));
         Assert.False(root.TryGetProperty("checked", out _));
+        Assert.False(root.TryGetProperty("state", out _));
         Assert.False(root.TryGetProperty("metadata", out _));
     }
 

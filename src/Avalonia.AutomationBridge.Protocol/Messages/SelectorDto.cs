@@ -66,6 +66,11 @@ public sealed class SelectorDto
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? HasAction { get; init; }
 
+    /// <summary>Optional state-bag key/value predicates matched against the published automation state.</summary>
+    [JsonPropertyName("state")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? State { get; init; }
+
     /// <summary>
     /// Restricts evaluation to the subtree rooted at this node handle.
     /// Corresponds to the <c>within</c> concept in the design.

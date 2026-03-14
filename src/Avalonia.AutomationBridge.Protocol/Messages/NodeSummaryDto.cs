@@ -87,10 +87,15 @@ public sealed class NodeSummaryDto
 
     private readonly double[]? _bounds;
 
-    /// <summary>Actions the node supports: invoke, setValue, toggle, select, expand, collapse, etc.</summary>
+    /// <summary>Supported bridge action names such as invoke, set-value, toggle, select, expand, or collapse.</summary>
     [JsonPropertyName("actions")]
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string[]? Actions { get; init; }
+
+    /// <summary>Structured state bag extracted from the automation surface when available.</summary>
+    [JsonPropertyName("state")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyDictionary<string, string>? State { get; init; }
 
     /// <summary>Structured metadata extracted from the automation surface when available.</summary>
     [JsonPropertyName("metadata")]

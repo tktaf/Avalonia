@@ -34,6 +34,7 @@ internal static class NodeSummaryProjection
                 Value = Include(requested, "value") ? node.Value : null,
                 Bounds = Include(requested, "bounds") ? node.Bounds : null,
                 Actions = Include(requested, "actions") ? node.Actions : null,
+                State = Include(requested, "state") ? node.State : null,
                 Metadata = Include(requested, "metadata") ? node.Metadata : null,
             };
         }

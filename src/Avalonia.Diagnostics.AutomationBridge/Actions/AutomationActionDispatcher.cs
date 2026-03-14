@@ -25,19 +25,21 @@ public static class AutomationActionDispatcher
                 request.RequestId);
         }
 
-        if (!peer.IsEnabled())
-        {
-            return BridgeResponse.Failure(
-                BridgeErrorCode.ElementNotEnabled,
-                $"Node '{request.NodeId}' is disabled.",
-                request.RequestId);
-        }
-
-        var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
-        var startingRevision = deltaBuilder.CurrentRevision;
-
         try
         {
+            if (!peer.IsEnabled())
+            {
+                return BridgeResponse.Failure(
+                    BridgeErrorCode.ElementNotEnabled,
+                    $"Node '{request.NodeId}' is disabled.",
+                    request.RequestId);
+            }
+
+            var deltaBuilder = session.GetOrCreateDeltaBuilderForPeer(peer);
+            var startingRevision = deltaBuilder.CurrentRevision;
+            deltaBuilder.BeginActionCapture(startingRevision);
+            var beforeActionSummary = session.SummarizePeer(peer);
+
             var response = request.Action switch
             {
                 BridgeAction.Invoke => Invoke(peer, request),
@@ -54,9 +56,15 @@ public static class AutomationActionDispatcher
             };
 
             if (!response.Ok)
+            {
+                deltaBuilder.EndActionCapture();
                 return response;
+            }
 
             var delta = deltaBuilder.CompleteAction(peer, startingRevision);
+            if (delta.Revision == startingRevision)
+                delta = deltaBuilder.ReconcileActionState(peer, beforeActionSummary);
+
             var completionState = delta.Revision == startingRevision
                 ? BridgeActionCompletionState.Accepted
                 : BridgeActionCompletionState.Completed;
@@ -65,6 +73,8 @@ public static class AutomationActionDispatcher
         }
         catch (Exception e)
         {
+            session.GetOrCreateDeltaBuilderForPeer(peer).EndActionCapture();
+
             return BridgeResponse.Failure(
                 BridgeErrorCode.ActionFailed,
                 $"Action '{request.Action}' failed: {e.Message}",
@@ -118,6 +128,13 @@ public static class AutomationActionDispatcher
         if (provider is null)
             return Unsupported(request, "Expand is not supported for this node.");
 
+        var state = GetExpandCollapseState(provider, request, BridgeAction.Expand);
+        if (!state.Ok)
+            return state.Response!;
+
+        if (state.Value == Avalonia.Automation.ExpandCollapseState.LeafNode)
+            return Unsupported(request, "Expand is not supported for this node.");
+
         provider.Expand();
         return BridgeResponse.Success(request.RequestId);
     }
@@ -126,6 +143,13 @@ public static class AutomationActionDispatcher
     {
         var provider = peer.GetProvider<IExpandCollapseProvider>();
         if (provider is null)
+            return Unsupported(request, "Collapse is not supported for this node.");
+
+        var state = GetExpandCollapseState(provider, request, BridgeAction.Collapse);
+        if (!state.Ok)
+            return state.Response!;
+
+        if (state.Value == Avalonia.Automation.ExpandCollapseState.LeafNode)
             return Unsupported(request, "Collapse is not supported for this node.");
 
         provider.Collapse();
@@ -189,6 +213,33 @@ public static class AutomationActionDispatcher
         };
     }
 
+    private static ExpandCollapseStateResult GetExpandCollapseState(
+        IExpandCollapseProvider provider,
+        BridgeRequest request,
+        string action)
+    {
+        try
+        {
+            return new ExpandCollapseStateResult(provider.ExpandCollapseState, null);
+        }
+        catch (Exception e)
+        {
+            return new ExpandCollapseStateResult(
+                null,
+                BridgeResponse.Failure(
+                    BridgeErrorCode.ActionFailed,
+                    $"Action '{action}' failed: {e.Message}",
+                    request.RequestId));
+        }
+    }
+
     private static BridgeResponse Unsupported(BridgeRequest request, string message)
         => BridgeResponse.Failure(BridgeErrorCode.ActionNotSupported, message, request.RequestId);
+
+    private sealed record ExpandCollapseStateResult(
+        Avalonia.Automation.ExpandCollapseState? Value,
+        BridgeResponse? Response)
+    {
+        public bool Ok => Response is null;
+    }
 }
