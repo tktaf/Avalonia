@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Automation.Provider;
@@ -14,6 +15,15 @@ namespace Avalonia.Diagnostics.AutomationBridge.Snapshot;
 /// </summary>
 internal sealed class AutomationDeltaBuilder : IDisposable
 {
+    /// <summary>
+    /// Resolves <c>AutomationElementIdentifiers.ItemTypeProperty</c> at runtime via reflection.
+    /// Returns <c>null</c> when the property doesn't exist (NuGet 11.3.12 base).
+    /// </summary>
+    private static readonly AutomationProperty? ItemTypePropertyOrNull =
+        typeof(AutomationElementIdentifiers)
+            .GetProperty("ItemTypeProperty", BindingFlags.Public | BindingFlags.Static)?
+            .GetValue(null) as AutomationProperty;
+
     private static readonly string[] s_patchFieldOrder =
     [
         NodePatchField.Enabled,
@@ -477,7 +487,7 @@ internal sealed class AutomationDeltaBuilder : IDisposable
         }
 
         if (property == AutomationElementIdentifiers.HelpTextProperty
-            || property == AutomationElementIdentifiers.ItemTypeProperty)
+            || property == ItemTypePropertyOrNull)
         {
             var (_, metadata) = AutomationNodeSummaryBuilder.BuildNameAndMetadataForPatch(peer);
             return new NodePatchDto
