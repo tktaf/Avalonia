@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>$(AvsCurrentTargetFramework)</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <Import Project="..\..\build\UnitTests.NetCore.targets" />
+  <Import Project="..\..\build\XUnit.props" />
+  <Import Project="..\..\build\SharedVersion.props" />
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Avalonia.AutomationBridge.Protocol\Avalonia.AutomationBridge.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\Avalonia.Diagnostics.AutomationBridge\Avalonia.Diagnostics.AutomationBridge.csproj" />
+    <ProjectReference Include="..\..\src\tools\Avalonia.AutomationBridge.Cli\Avalonia.AutomationBridge.Cli.csproj" />
+    <ProjectReference Include="..\Avalonia.UnitTests\Avalonia.UnitTests.csproj" />
+  </ItemGroup>
+</Project>

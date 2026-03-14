@@ -1,0 +1,46 @@
+using Avalonia.Diagnostics.AutomationBridge.Hosting;
+using Avalonia.Controls.ApplicationLifetimes;
+
+namespace Avalonia.Diagnostics.AutomationBridge;
+
+/// <summary>
+/// <see cref="AppBuilder"/> extension methods for the dev-only automation bridge.
+/// </summary>
+public static class AutomationBridgeAppBuilderExtensions
+{
+    /// <summary>
+    /// Registers the dev automation bridge so that it starts when the
+    /// <see cref="AppBuilder"/> setup phase completes.
+    /// </summary>
+    /// <param name="builder">The <see cref="AppBuilder"/> to configure.</param>
+    /// <param name="options">
+    /// Optional bridge options. When <see langword="null"/> a default
+    /// <see cref="AutomationBridgeOptions"/> instance is used.
+    /// </param>
+    /// <returns>The same <see cref="AppBuilder"/> instance for fluent chaining.</returns>
+    /// <remarks>
+    /// The method is intentionally named <c>WithDevAutomationBridge</c> (not
+    /// <c>WithAutomationBridge</c>) to signal that it is a development-time tool and must
+    /// never be called in production builds without an explicit guard.
+    /// </remarks>
+    public static AppBuilder WithDevAutomationBridge(
+        this AppBuilder builder,
+        AutomationBridgeOptions? options = null)
+    {
+        var opts = options ?? new AutomationBridgeOptions();
+        var service = new AutomationBridgeHostedService(opts);
+
+        // Notify any observer (typically a test) that the service has been created.
+        // This avoids the circular dependency that arises from storing the service
+        // back on the options object.
+        opts.OnServiceRegistered?.Invoke(service);
+
+        return builder.AfterSetup(appBuilder =>
+        {
+            service.Start();
+            AutomationBridgeLifetimeRegistration.RegisterStopOnExit(
+                service,
+                appBuilder.Instance?.ApplicationLifetime as IControlledApplicationLifetime);
+        });
+    }
+}
