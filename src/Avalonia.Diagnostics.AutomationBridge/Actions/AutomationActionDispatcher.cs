@@ -85,11 +85,23 @@ public static class AutomationActionDispatcher
     private static BridgeResponse Invoke(Avalonia.Automation.Peers.AutomationPeer peer, BridgeRequest request)
     {
         var provider = peer.GetProvider<IInvokeProvider>();
-        if (provider is null)
-            return Unsupported(request, "Invoke is not supported for this node.");
+        if (provider is not null)
+        {
+            provider.Invoke();
+            return BridgeResponse.Success(request.RequestId);
+        }
 
-        provider.Invoke();
-        return BridgeResponse.Success(request.RequestId);
+        // Fall back to selection for nodes like ListBoxItem that support
+        // ISelectionItemProvider but not IInvokeProvider.  When a caller
+        // "invokes" a list item, the intuitive expectation is selection.
+        var selectionProvider = peer.GetProvider<ISelectionItemProvider>();
+        if (selectionProvider is not null)
+        {
+            selectionProvider.Select();
+            return BridgeResponse.Success(request.RequestId);
+        }
+
+        return Unsupported(request, "Invoke is not supported for this node.");
     }
 
     private static BridgeResponse SetValue(Avalonia.Automation.Peers.AutomationPeer peer, BridgeRequest request)
