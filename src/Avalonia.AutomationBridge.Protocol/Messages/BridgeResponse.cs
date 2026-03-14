@@ -42,6 +42,20 @@ public sealed class BridgeResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ActionCompletionDto? Completion { get; init; }
 
+    /// <summary>
+    /// Base64-encoded PNG image data for screenshot responses. Null for non-screenshot requests.
+    /// </summary>
+    [JsonPropertyName("image")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? Image { get; init; }
+
+    /// <summary>
+    /// Bounding rectangle of the captured element as [x, y, width, height]. Null for non-screenshot requests.
+    /// </summary>
+    [JsonPropertyName("imageBounds")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double[]? ImageBounds { get; init; }
+
     // --- Factory helpers -------------------------------------------------
 
     /// <summary>Creates a successful response with no payload.</summary>
@@ -68,6 +82,10 @@ public sealed class BridgeResponse
             Delta = delta,
             Completion = new ActionCompletionDto { State = completionState },
         };
+
+    /// <summary>Creates a successful response containing a screenshot image.</summary>
+    public static BridgeResponse WithScreenshot(string base64Png, double[] bounds, string? requestId = null) =>
+        new() { RequestId = requestId, Ok = true, Image = base64Png, ImageBounds = bounds };
 
     /// <summary>Creates an error response using the supplied typed error.</summary>
     public static BridgeResponse Failure(ErrorDto error, string? requestId = null) =>

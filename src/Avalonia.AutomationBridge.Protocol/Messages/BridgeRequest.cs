@@ -46,6 +46,9 @@ public static class BridgeAction
 
     /// <summary>Subscribe to revision updates for a root.</summary>
     public const string Watch = "watch";
+
+    /// <summary>Capture a PNG screenshot of the target node or root window.</summary>
+    public const string Screenshot = "screenshot";
 }
 
 /// <summary>Request envelope sent from the CLI or tool to the in-process bridge.</summary>

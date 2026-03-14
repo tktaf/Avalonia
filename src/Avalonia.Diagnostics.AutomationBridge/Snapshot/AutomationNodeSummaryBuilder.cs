@@ -212,6 +212,9 @@ public static class AutomationNodeSummaryBuilder
             actions.Add(BridgeAction.SetScrollPercent);
         }
 
+        if (peer is ControlAutomationPeer)
+            actions.Add(BridgeAction.Screenshot);
+
         return actions.ToArray();
     }
 
