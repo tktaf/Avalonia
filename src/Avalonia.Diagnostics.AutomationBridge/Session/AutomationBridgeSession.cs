@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Avalonia.Automation.Peers;
+using Avalonia.Automation.Provider;
 using Avalonia.AutomationBridge.Protocol.Messages;
 using Avalonia.Diagnostics.AutomationBridge.Snapshot;
 
@@ -201,7 +202,9 @@ public sealed class AutomationBridgeSession : IDisposable
             return _handleRegistry.GetOrAssignRootHandle(peer);
 
         // Walk the automation tree to find a root that owns this peer.
-        var automationRoot = peer.GetAutomationRoot();
+        // GetAutomationRoot() was added in Avalonia master after 11.3.12,
+        // so we inline the equivalent parent-walk here for compatibility.
+        var automationRoot = FindAutomationRoot(peer);
         if (automationRoot is not null
             && !ReferenceEquals(automationRoot, peer)
             && IsCurrentRoot(automationRoot))
@@ -210,6 +213,25 @@ public sealed class AutomationBridgeSession : IDisposable
         }
 
         return fallback;
+    }
+
+    /// <summary>
+    /// Walks the parent chain to find the root peer that owns the given peer.
+    /// Equivalent to <c>AutomationPeer.GetAutomationRoot()</c> which was added
+    /// after the 11.3.12 release.
+    /// </summary>
+    private static AutomationPeer? FindAutomationRoot(AutomationPeer peer)
+    {
+        var current = peer;
+        var parent = current.GetParent();
+
+        while (current.GetProvider<IRootProvider>() is null && parent is not null)
+        {
+            current = parent;
+            parent = current.GetParent();
+        }
+
+        return current;
     }
 
     private bool IsCurrentRoot(AutomationPeer peer)
