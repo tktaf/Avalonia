@@ -212,6 +212,15 @@ public sealed class AutomationBridgeSession : IDisposable
             return _handleRegistry.GetOrAssignRootHandle(automationRoot);
         }
 
+        // Popup children (e.g. ComboBoxItem inside an expanded ComboBox)
+        // have a parent chain that terminates at the popup root, which is
+        // not a registered top-level root.  Fall back to the first
+        // registered root (the main window) so that actions like "select"
+        // can resolve the root peer correctly.
+        var roots = _peerSource.GetPeers();
+        if (roots.Count > 0)
+            return _handleRegistry.GetOrAssignRootHandle(roots[0]);
+
         return fallback;
     }
 
